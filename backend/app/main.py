@@ -1,0 +1,125 @@
+"""
+Main FastAPI application
+"""
+
+import logging
+import asyncio
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.config import settings
+from app.database.base import init_db
+from app.telegram.listener import TelegramListener, MessageProcessor
+from app.parsers.implementations import init_parsers
+
+# Import API routes
+from app.api.routes import signals, channels, message_types
+
+# Configure logging
+logging.basicConfig(level=settings.log_level)
+logger = logging.getLogger(__name__)
+
+
+# Initialize telegram listener at module level
+telegram_listener: TelegramListener = TelegramListener()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events"""
+    # Startup
+    logger.info("Starting Signal Analyzer application")
+    
+    # Initialize database
+    init_db()
+    logger.info("Database initialized")
+    
+    # Initialize parsers
+    init_parsers()
+    logger.info("Signal parsers initialized")
+    
+    if settings.enable_telegram_listener:
+        try:
+            await telegram_listener.connect()
+            logger.info("Connected to Telegram")
+            
+            # Register handlers
+            telegram_listener.register_handler(MessageProcessor.store_and_parse_message)
+            logger.info("Message handlers registered")
+            
+            # Start listening in background
+            asyncio.create_task(telegram_listener.start_listening())
+            logger.info("Telegram listener started")
+        except Exception as e:
+            logger.error(f"Failed to start Telegram listener: {e}")
+    
+    logger.info("Application startup complete")
+    
+    yield  # App runs here
+    
+    # Shutdown
+    logger.info("Shutting down Signal Analyzer application")
+    if telegram_listener.client:
+        await telegram_listener.disconnect()
+    logger.info("Application shutdown complete")
+
+
+# Create FastAPI app
+app = FastAPI(
+    title="Signal Analyzer API",
+    description="Trading signal analysis platform",
+    version="0.1.0",
+    lifespan=lifespan
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include API routers
+app.include_router(signals.router)
+app.include_router(channels.router)
+app.include_router(message_types.router)
+
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "ok",
+        "version": "0.1.0",
+        "telegram_enabled": settings.enable_telegram_listener
+    }
+
+
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {
+        "name": "Signal Analyzer API",
+        "version": "0.1.0",
+        "docs": "/docs",
+        "features": {
+            "telegram_listener": settings.enable_telegram_listener,
+            "analysis_engine": settings.enable_analysis_engine,
+            "trade_engine": settings.enable_trade_engine
+        }
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    uvicorn.run(
+        "app.main:app",
+        host=settings.api_host,
+        port=settings.api_port,
+        reload=settings.api_reload
+    )
