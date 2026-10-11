@@ -3,7 +3,7 @@ Database models for the Signal Analyzer application
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, ForeignKey, Text, JSON, UniqueConstraint, Enum as SQLEnum
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Float, DateTime, ForeignKey, Text, UniqueConstraint, Enum as SQLEnum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import enum
@@ -129,6 +129,27 @@ class Signal(Base):
     take_profits = relationship("SignalTakeProfit", back_populates="signal", cascade="all, delete-orphan")
     analyses = relationship("Analysis", back_populates="signal", cascade="all, delete-orphan")
     trades = relationship("Trade", back_populates="signal")
+
+
+class TelegramPublication(Base):
+    __tablename__ = "telegram_publications"
+
+    id = Column(Integer, primary_key=True)
+    account_id = Column(String, nullable=False)
+    source_channel_id = Column(String, nullable=False)
+    source_message_id = Column(String, nullable=False)
+    destination_chat_id = Column(String, nullable=False)
+    random_id = Column(BigInteger, nullable=False)
+    destination_message_id = Column(Integer, nullable=True)
+    body = Column(Text, nullable=False)
+    status = Column(String, nullable=False, default="sending")
+    error_type = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("account_id", "source_channel_id", "source_message_id", "destination_chat_id", name="uq_telegram_publication_source_destination"),
+    )
 
 
 class SignalEntry(Base):

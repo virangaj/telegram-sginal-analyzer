@@ -182,6 +182,49 @@ Login codes and passwords are not stored in the application database.
 
 SQLite is used for development. On first run, migrations will initialize the schema.
 
+### Automatic Telegram Publication
+
+New successfully parsed signals are automatically sent to **Signal for you**
+(`-1004302136634`, `https://t.me/signal_for_you_v1`) using the connected Telegram account.
+That account must be a member with permission to post. Publication formats the existing
+signal; it does not generate missing levels, evaluate profitability, or execute trades.
+
+```text
+GOLD
+BUY
+Entry: 2000
+TP1: 2020
+TP2: 2030
+SL: 1990
+```
+
+LIMIT/STOP orders keep their order type on the direction line. Multiple entries and targets
+retain their supplied values and precision. Incomplete or wrong-side levels are not sent.
+The original message must explicitly identify the instrument and direction; assumed or
+ambiguous BUY/SELL values are not published.
+Existing signals, historical reprocessing, and manual edits are not automatically published.
+The destination is excluded from signal ingestion while automatic publication is enabled.
+
+Configuration defaults to the approved destination; disable sending when needed:
+
+```dotenv
+TELEGRAM_AUTO_PUBLISH=true
+TELEGRAM_PUBLISH_CHAT_ID=-1004302136634
+```
+
+The additive `telegram_publications` ledger records each account/source-message/destination
+combination and a Telegram random ID before sending. Duplicate attempts are suppressed,
+including after restart or signal deletion. Failed/unknown/sending records are not blindly
+retried; inspect destination history before any recovery to avoid duplicate public posts.
+Delivery is not guaranteed: permission errors, outages, or a process interruption can require
+manual reconciliation. Telegram delivery failures do not turn a parsed signal into a parse failure.
+
+Current startup initialization creates the new ledger table without altering existing tables.
+For a controlled SQLite rollout, the same additive schema is provided in
+[001_telegram_publications.sql](backend/app/database/migrations/001_telegram_publications.sql).
+Back up the database before applying schema changes. This standalone script is not a
+configured Alembic baseline and does not migrate existing signal/message columns.
+
 ### Signal Management
 
 Local clients can manage stored signals through these endpoints:
@@ -201,6 +244,10 @@ back up important records first. New Telegram messages may create new signals af
 
 Frontend helpers are `apiClient.updateSignal`, `deleteSignal`, and `deleteAllSignals`.
 The dashboard exposes Edit and Delete controls on each signal and a Delete All action.
+Signals appear in a table with entry, SL, labeled TPs, per-target planned R:R, stored
+status, and source channel. Planned R:R uses the average listed entry, not observed fills.
+Success/Failed labels are shown only when supplied by the backend; pending or completed
+states are not automatically interpreted as profitable or losing outcomes.
 The edit dialog accepts comma-separated entry and take-profit prices plus a numeric stop
 loss. Invalid prices and failed saves keep the dialog open; deletion requires confirmation.
 
@@ -217,6 +264,33 @@ or signal-linked historical analysis. Back up the database before running it.
 
 ## Configuration
 
+### Biquote Market Quotes
+
+The dashboard displays XAU/USD bid, ask, and midpoint quotes from
+[Biquote](https://biquote.io/guides/free-forex-api-python.html) using the anonymous REST
+batch endpoint. No API key or additional dependency is required. The browser requests
+`GET /api/market/XAUUSD` every second; a shared backend cache limits upstream refreshes.
+The displayed provider/broker source, quote timestamp, age, and market-state label come
+from validated provider data. A closed/stale quote is shown as a last quote, not live.
+
+Optional backend environment settings:
+
+```dotenv
+BIQUOTE_BASE_URL=https://biquote.io
+BIQUOTE_POLL_INTERVAL_SECONDS=1
+BIQUOTE_STALE_AFTER_SECONDS=300
+BIQUOTE_SYMBOLS=XAUUSD,XAGUSD,EURUSD,GBPUSD,USDJPY
+```
+
+These provider-specific settings are independent of the older `MARKET_DATA_*` placeholders.
+`GET /api/market/{symbol}` supports configured symbols and returns explicit unavailable,
+unknown, stale, closed, or live status. Rate limits/outages cause bounded backoff; failures
+preserve the last source timestamp and never make stale data appear fresh.
+This integration supplies quotes only: it does not persist candles, implement historical
+replay, subscribe to SignalR, generate trading signals, or place orders. The provider's
+OHLC documentation describes mixed upstream sources; historical integration needs explicit
+per-series provenance and coverage before those bars can be used as replay evidence.
+
 See `.env.example` for required environment variables:
 - Telegram API credentials
 - Database connection
@@ -224,6 +298,27 @@ See `.env.example` for required environment variables:
 - API configuration
 
 ## Signal Format Normalization
+
+Selected Telegram channels accept both incoming messages and messages sent by the connected
+account. The automatic-publication destination remains excluded to prevent feedback loops.
+The listener handles new messages only; messages skipped before this change are not
+automatically imported from Telegram history.
+
+The default gold parser accepts explicit GOLD/XAUUSD/XAU/USD BUY or SELL signals with
+complete entry, SL, and TP values, including numbered targets and scaling entries:
+
+```text
+GOLD BUY 2000
+MORE BUY 1995
+TP1: 2020
+TP2: 2030
+SL: 1980
+```
+
+Labeled `Entry:` values and explicit MARKET/LIMIT/STOP orders are also supported.
+Missing levels, conflicting directions, wrong-side prices, follow-up/result messages, and
+entry ranges such as `2000-2010` remain unparsed for review rather than being guessed.
+Legacy configured parser names resolve to the same validated gold parser.
 
 All signals are normalized to:
 

@@ -3,7 +3,6 @@ Main FastAPI application
 """
 
 import logging
-import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +13,7 @@ from app.telegram.listener import get_telegram_listener, MessageProcessor
 from app.parsers.implementations import init_parsers
 
 # Import API routes
-from app.api.routes import signals, channels, message_types, telegram_auth
+from app.api.routes import signals, channels, message_types, telegram_auth, market
 
 # Configure logging
 logging.basicConfig(level=settings.log_level)
@@ -60,6 +59,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Signal Analyzer application")
     if telegram_listener.client:
         await telegram_listener.disconnect()
+    await market.close_market_provider()
     logger.info("Application shutdown complete")
 
 
@@ -85,6 +85,7 @@ app.include_router(signals.router)
 app.include_router(channels.router)
 app.include_router(message_types.router)
 app.include_router(telegram_auth.router)
+app.include_router(market.router)
 
 
 # Health check endpoint

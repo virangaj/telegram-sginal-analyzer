@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     telegram_phone: str
     telegram_session_name: str = "signal_analyzer"
     telegram_channel_ids: str = ""  # Comma-separated
+    telegram_auto_publish: bool = True
+    telegram_publish_chat_id: int = -1004302136634
     
     # Database
     database_url: str = "sqlite:///./signal_analyzer.db"
@@ -30,6 +32,10 @@ class Settings(BaseSettings):
     market_data_base_url: str = "https://api.gold-api.com"
     market_data_poll_interval_seconds: int = 30
     market_data_stale_after_seconds: int = 300
+    biquote_base_url: str = "https://biquote.io"
+    biquote_poll_interval_seconds: int = 1
+    biquote_stale_after_seconds: int = 300
+    biquote_symbols: str = "XAUUSD,XAGUSD,EURUSD,GBPUSD,USDJPY"
     
     # Logging
     log_level: str = "INFO"

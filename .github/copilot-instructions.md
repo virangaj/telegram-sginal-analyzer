@@ -11,7 +11,9 @@ historical scaffold examples, status claims, and repository memory.
 - Owners: `backend/app/parsers`, `telegram`, `market`, `analysis`, `risk`, `trade`,
   `services`, `database`, and `api`. Keep domain math out of controllers and presentation.
 - Frontend: Next.js Pages Router/React 18, TypeScript, Tailwind, Axios, Zustand, Recharts,
-  Lucide. Preserve dark-blue gradient/glass styling and selected-first channel ordering.
+  Lucide. Preserve charcoal/lavender styling with subtle gradients, translucent surfaces,
+  semantic status colors, and selected-first channel ordering. Reuse shared CSS tokens;
+  consult the frontend skill for the approved palette rather than reverting to blue.
 - Alembic is declared but not configured; PostgreSQL and durable queues are not current.
   Market providers and quantitative analysis/replay are incomplete. Do not replace working
   technologies or add dependencies without a concrete scoped need.

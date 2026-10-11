@@ -46,63 +46,21 @@ class ApiClient {
     return this.client.post(`/api/signals/${id}`, data);
   }
 
-  async deleteSignal(id: number) {
-    return this.client.delete(`/api/signals/${id}`);
+  async publishSignal(id: number) {
+    return this.client.post(`/api/signals/${id}/publish`, null, { params: { confirm: true } });
   }
 
-  async deleteAllSignals(confirm: boolean) {
-    return this.client.delete('/api/signals', { params: { confirm } });
+  async deleteSignal(id: number, deletePublished: boolean = false) {
+    return this.client.delete(`/api/signals/${id}`, { params: { delete_published: deletePublished } });
   }
 
-  async getSignalMessage(id: number) {
-    return this.client.get(`/api/signals/${id}/message`);
-  }
-
-  async getSignalEvents(id: number) {
-    return this.client.get(`/api/signals/${id}/events`);
-  }
-
-  async getSignalRiskReward(id: number) {
-    return this.client.get(`/api/signals/${id}/risk-reward`);
-  }
-
-  async getSignalAnalysis(id: number) {
-    return this.client.get(`/api/signals/${id}/analysis`);
-  }
-
-  async reanalyzeSignal(id: number) {
-    return this.client.post(`/api/signals/${id}/reanalyze`);
-  }
-
-  // Dashboard
-  async getDashboard(symbol?: string) {
-    return this.client.get('/api/dashboard', { params: { symbol } });
+  async deleteAllSignals(confirm: boolean, deletePublished: boolean = false) {
+    return this.client.delete('/api/signals', { params: { confirm, delete_published: deletePublished } });
   }
 
   // Market data
   async getMarketSnapshot(symbol: string) {
     return this.client.get(`/api/market/${symbol}`);
-  }
-
-  async getMarketSupportResistance(symbol: string, timeframe?: string) {
-    return this.client.get(`/api/market/${symbol}/support-resistance`, { params: { timeframe } });
-  }
-
-  async getMarketAnalysis(symbol: string) {
-    return this.client.get(`/api/market/${symbol}/analysis`);
-  }
-
-  // Trade setups
-  async getSetups(status?: string) {
-    return this.client.get('/api/setups', { params: { status } });
-  }
-
-  async getSetup(id: number) {
-    return this.client.get(`/api/setups/${id}`);
-  }
-
-  async getChannelStats(id: number) {
-    return this.client.get(`/api/channels/${id}/stats`);
   }
 
   // Channels
@@ -118,30 +76,11 @@ class ApiClient {
     return this.client.get(`/api/channels/${id}`);
   }
 
-  async getAvailableChannels() {
-    return this.client.get('/api/channels/available');
-  }
-
-  async addChannel(data: {
-    external_channel_id: string;
-    channel_name: string;
-    username?: string;
-    channel_type?: string;
-    parser_type?: string;
-    enabled?: boolean;
-  }) {
-    return this.client.post('/api/channels', data);
-  }
-
   async updateChannel(
     id: number,
     data: { channel_name?: string; parser_type?: string; enabled?: boolean }
   ) {
     return this.client.post(`/api/channels/${id}`, data);
-  }
-
-  async removeChannel(id: number) {
-    return this.client.delete(`/api/channels/${id}`);
   }
 
   // Telegram authentication
@@ -159,10 +98,6 @@ class ApiClient {
 
   async telegramVerify2FA(password: string) {
     return this.client.post('/api/telegram/verify-2fa', { password });
-  }
-
-  async telegramDisconnect() {
-    return this.client.post('/api/telegram/disconnect');
   }
 
   async telegramLogout() {

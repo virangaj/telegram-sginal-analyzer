@@ -2,7 +2,8 @@
 
 Status: provider-independent target contracts. The existing ABC in
 `backend/app/market/base.py` has latest-price/bid-ask/recent-ticks/latest-N OHLC methods;
-it does not yet provide a provenance-rich historical range API or a working provider.
+it does not yet provide a provenance-rich historical range API. The Biquote quote adapter
+implements timestamped midpoint/bid/ask snapshots with freshness, not historical candles.
 See [architecture](../ARCHITECTURE.md).
 
 ## Instrument and Provider Capabilities

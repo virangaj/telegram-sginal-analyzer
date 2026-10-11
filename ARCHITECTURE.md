@@ -17,9 +17,9 @@ observed executable results are different products and must remain separate.
 | Channels | `api/routes/channels.py` | Discovery and database-enabled live filtering; local-only management |
 | Parsing | `parsers/base.py`, `registry.py`, `implementations/examples.py` | Text-only plugins; required entries/SL/TP; metadata/revisions need extension |
 | Persistence | `database/models.py`, `database/base.py` | SQLite default; synchronous SQLAlchemy; create_all and a legacy-status repair |
-| Market data | `market/base.py`, `market/providers/` | Async abstraction; no concrete provider implementation verified |
+| Market data | `market/base.py`, `market/providers/biquote.py`, `api/routes/market.py` | Biquote quote adapter; cached REST snapshots with source/time/freshness; no candle/replay pipeline |
 | Analytics | `analysis/engine.py`, `analysis/regime.py`, `trade/entry_engine.py`, `risk/engine.py` | Standalone helpers and placeholders; no complete wired technical/backtesting pipeline |
-| API | `api/routes/`, `api/schemas.py` | Signals, channels, message types, Telegram auth; inspect OpenAPI before adding clients |
+| API | `api/routes/`, `api/schemas.py` | Signals, channels, message types, Telegram auth, market snapshots; inspect OpenAPI before adding clients |
 | Frontend | `frontend/pages`, `components`, `lib` | Next.js Pages Router/React 18, TypeScript, Axios, Zustand, Tailwind, Recharts, Lucide |
 | Tests/deployment | `backend/tests`, `docker` | Focused channel/database tests; Docker artifacts; no verified frontend test framework or CI |
 

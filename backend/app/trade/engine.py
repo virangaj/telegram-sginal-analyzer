@@ -2,7 +2,6 @@
 Trade management and execution engine
 """
 
-from typing import Optional
 from app.parsers.base import NormalizedSignal
 
 

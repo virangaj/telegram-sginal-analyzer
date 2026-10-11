@@ -9,6 +9,7 @@ import { SignalsList } from '@/components/SignalsList';
 import { useAppStore } from '@/lib/store';
 import { apiClient } from '@/lib/api';
 import { SignalManagementDialog, SignalAction, SignalPrices } from '@/components/SignalManagementDialog';
+import { MarketQuoteStrip } from '@/components/MarketQuoteStrip';
 
 export default function Home() {
   const { signals, loading, error, setSignals, setLoading, setError } =
@@ -26,16 +27,23 @@ export default function Home() {
     setNotice(`Signal #${id} updated`);
   }
 
-  async function deleteSignals(id?: number) {
+  async function sendSignal(id: number) {
+    await apiClient.publishSignal(id);
+    setNotice(`Signal #${id} sent to Telegram`);
+  }
+
+  async function deleteSignals(id?: number, deletePublished = false) {
     requestVersion.current += 1;
-    const response = id === undefined ? await apiClient.deleteAllSignals(true) : await apiClient.deleteSignal(id);
+    const response = id === undefined ? await apiClient.deleteAllSignals(true, deletePublished) : await apiClient.deleteSignal(id, deletePublished);
     setSignals(id === undefined ? [] : useAppStore.getState().signals.filter((signal) => signal.id !== id));
     setNotice(`${response.data.deleted} signal${response.data.deleted === 1 ? '' : 's'} deleted`);
   }
 
   useEffect(() => {
+    let requestInFlight = false;
     const loadSignals = async () => {
-      if (pollPaused.current) return;
+      if (pollPaused.current || requestInFlight) return;
+      requestInFlight = true;
       const version = requestVersion.current;
       try {
         const response = await apiClient.getSignals();
@@ -47,6 +55,7 @@ export default function Home() {
         setError('Failed to load signals');
         console.error(err);
       } finally {
+        requestInFlight = false;
         setLoading(false);
       }
     };
@@ -54,14 +63,14 @@ export default function Home() {
     setLoading(true);
     loadSignals();
 
-    // Poll for new signals every 30 seconds
-    const interval = setInterval(loadSignals, 30000);
+    const interval = setInterval(loadSignals, 1000);
     return () => clearInterval(interval);
   }, [setSignals, setLoading, setError]);
 
   return (
     <Layout title="Signals - Signal Analyzer">
       <div className="space-y-8">
+        <MarketQuoteStrip />
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
           <h2 className="text-3xl font-bold text-white mb-2">Latest Signals</h2>
@@ -79,9 +88,10 @@ export default function Home() {
           error={error}
           onEditSignal={(signal) => setAction({ kind: 'edit', signal })}
           onDeleteSignal={(signal) => setAction({ kind: 'delete', signal })}
+          onSendSignal={(signal) => setAction({ kind: 'send', signal })}
         />
       </div>
-      {action && <SignalManagementDialog action={action} onClose={() => setAction(null)} onSave={saveSignal} onDelete={deleteSignals} />}
+      {action && <SignalManagementDialog action={action} onClose={() => setAction(null)} onSave={saveSignal} onDelete={deleteSignals} onSend={sendSignal} />}
     </Layout>
   );
 }

@@ -120,7 +120,7 @@ class TelegramListener:
         self.refresh_channels()
         self.is_listening = True
 
-        @self.client.on(NewMessage(incoming=True))
+        @self.client.on(NewMessage())
         async def handle_message(event: NewMessage.Event):
             """
             Handle incoming Telegram messages.
@@ -134,9 +134,9 @@ class TelegramListener:
 
             try:
                 logger.debug(
-                    "Received message from %s: %s",
+                    "Received message from %s (message %s)",
                     event.chat_id,
-                    event.raw_text[:100],
+                    event.message.id,
                 )
 
                 for handler in self.message_handlers:
@@ -218,9 +218,14 @@ class TelegramListener:
             channels = db.query(Channel).filter(
                 Channel.platform == "telegram", Channel.enabled.is_(True)
             ).all()
-            self.enabled_chat_ids = {int(channel.external_channel_id) for channel in channels}
+            self.enabled_chat_ids = {
+                int(channel.external_channel_id) for channel in channels
+                if not settings.telegram_auto_publish or int(channel.external_channel_id) != settings.telegram_publish_chat_id
+            }
 
     def accepts_channel(self, chat_id: Optional[int]) -> bool:
+        if settings.telegram_auto_publish and chat_id == settings.telegram_publish_chat_id:
+            return False
         return chat_id in self.enabled_chat_ids
 
     async def stop_listening(self) -> None:
@@ -462,6 +467,9 @@ class MessageProcessor:
         does not wait for parser/database work.
         """
 
+        if settings.telegram_auto_publish and event.chat_id == settings.telegram_publish_chat_id:
+            return
+
         result = await MessageProcessor.store_raw_message(
             event
         )
@@ -528,11 +536,22 @@ class MessageProcessor:
                 message_id,
             )
 
-            await SignalService.parse_and_store_signal(
+            signal = await SignalService.parse_and_store_signal(
                 message_id,
                 raw_text,
                 session,
             )
+
+            if signal is not None:
+                from app.telegram.publisher import publish_signal
+
+                try:
+                    await publish_signal(signal, session, get_telegram_listener().client)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    session.rollback()
+                    logger.warning("Telegram publication failed for signal %s (%s)", signal.id, type(error).__name__)
 
             logger.debug(
                 "Finished parser for message %s",

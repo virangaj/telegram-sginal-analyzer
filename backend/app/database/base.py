@@ -24,6 +24,9 @@ def init_db():
     """Initialize database - create all tables"""
     Base.metadata.create_all(bind=engine)
     with engine.begin() as connection:
+        columns = {column["name"] for column in inspect(connection).get_columns("telegram_publications")}
+        if "destination_message_id" not in columns:
+            connection.execute(text("ALTER TABLE telegram_publications ADD COLUMN destination_message_id INTEGER"))
         connection.execute(
             text("UPDATE signals SET status = :pending WHERE status = :legacy_status"),
             {"pending": SignalStatus.PENDING.name, "legacy_status": "SUCCESS"},

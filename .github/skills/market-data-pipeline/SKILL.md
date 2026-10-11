@@ -12,8 +12,9 @@ trade outcomes are consumers, not responsibilities of this skill.
 ## Inspect First
 Read `backend/app/market/base.py`, `backend/app/market/providers/`,
 `backend/app/config.py`, `backend/app/database/models.py`, and `backend/requirements.txt`.
-The current async ABC exposes current price, bid/ask, recent ticks, and limited OHLC;
-there is no verified concrete provider. Read [shared architecture](../../../ARCHITECTURE.md).
+The current async ABC exposes current price, bid/ask, recent ticks, and limited OHLC.
+`market/providers/biquote.py` implements cached quotes with provenance and freshness;
+historical candles are explicitly unsupported. Read [shared architecture](../../../ARCHITECTURE.md).
 
 ## Responsibilities and Domain Rules
 - Declare provider capabilities, broker/feed identity, symbol mappings, calendars,
