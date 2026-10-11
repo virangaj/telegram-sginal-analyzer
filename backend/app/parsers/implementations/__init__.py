@@ -3,19 +3,12 @@ Parser initialization and registration
 """
 
 from app.parsers.registry import register_parser
-from app.parsers.implementations.examples import (
-    GoldBuyLimitParser,
-    GoldScalingSellParser,
-    MultiEntryParser
-)
+from app.parsers.implementations.gold import GoldSignalParser
 
 
 def init_parsers():
     """Initialize and register all available parsers"""
     
-    # Register example parsers
-    register_parser("gold_buy_limit_v1", GoldBuyLimitParser())
-    register_parser("gold_scaling_sell_v1", GoldScalingSellParser())
-    register_parser("multi_entry_v1", MultiEntryParser())
-    
-    # Add more parsers here as needed
+    register_parser("gold_signal_v1", GoldSignalParser())
+    for name in ("gold_buy_limit_v1", "gold_scaling_sell_v1", "multi_entry_v1"):
+        register_parser(name, GoldSignalParser(name))

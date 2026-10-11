@@ -35,6 +35,37 @@ def test_listener_refreshes_database_selection(monkeypatch):
     engine.dispose()
 
 
+def test_listener_accepts_self_sent_messages_on_selected_channels(monkeypatch):
+    telegram = listener.TelegramListener()
+    telegram.enabled_chat_ids = {-100123}
+    monkeypatch.setattr(telegram, "refresh_channels", lambda: None)
+    subscriptions = []
+
+    def subscribe(builder):
+        def register(callback):
+            subscriptions.append((builder, callback))
+            return callback
+        return register
+
+    telegram.client = SimpleNamespace(on=subscribe, run_until_disconnected=AsyncMock())
+    handler = AsyncMock()
+    telegram.register_handler(handler)
+
+    async def check():
+        await telegram.start_listening()
+        builder, callback = subscriptions[0]
+        assert builder.incoming is None
+        assert builder.outgoing is None
+        event = SimpleNamespace(chat_id=-100123, out=True, message=SimpleNamespace(id=123), raw_text="sanitized")
+        await callback(event)
+        handler.assert_awaited_once_with(event)
+        event.chat_id = -100456
+        await callback(event)
+        handler.assert_awaited_once()
+
+    asyncio.run(check())
+
+
 def test_discovery_preserves_saved_selection(monkeypatch):
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)

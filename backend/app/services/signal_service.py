@@ -140,7 +140,7 @@ class SignalService:
                 message.parse_error = "No parser could handle this message"
                 message.processed_at = datetime.utcnow()
                 db.commit()
-                logger.warning(f"Could not parse message {message_id}: {message_text[:100]}")
+                logger.warning("Could not parse message %s", message_id)
                 return None
             
             # Resolve the configured message type from the parser that matched (if any)

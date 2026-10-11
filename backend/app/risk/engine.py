@@ -5,7 +5,7 @@ Kept fully independent from the entry engine and parsers.
 No prop-firm or broker rules are hard-coded here.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List
 
 

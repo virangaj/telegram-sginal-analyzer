@@ -16,7 +16,7 @@ Use the Pages Router, React 18, Tailwind, Axios, Zustand, Recharts, and Lucide a
 present. Read [shared architecture](../../../ARCHITECTURE.md).
 
 ## Responsibilities and Domain Rules
-- Preserve the requested dark-blue gradient/glass theme; keep operational surfaces
+- Preserve the charcoal/lavender reference theme described below; keep operational surfaces
   compact, legible, keyboard-accessible, and responsive rather than marketing-style.
 - Keep selected listening channels first, persist checkbox changes, and distinguish
   selected, listening, disconnected, saving, and failed states.
@@ -31,6 +31,25 @@ present. Read [shared architecture](../../../ARCHITECTURE.md).
 - Format prices using instrument precision, UTC/timezone-aware labels, and finite values.
 - Reuse existing charts where suitable; adopt Lightweight Charts only for a demonstrated
   candlestick/overlay requirement. Do not replace the router or chart library arbitrarily.
+
+## Color Scheme
+Use the approved Prometheus-style reference palette, not the earlier saturated blue theme:
+- Page background: charcoal `#141621`; dialog/surface base: `#222432`.
+- Accent: lavender `#b49aff`; muted text: `#a3a5b8`; secondary text: `#9295ac`.
+- Borders: restrained neutral `rgba(186, 185, 209, 0.15)`; foreground: `#e7e5f0`.
+- Use subtle violet, teal, and rose background gradients with dark translucent surfaces.
+  Avoid bright blue washes, decorative glowing blobs, and marketing-style framing.
+- Reuse `--glass-border`, `--glass-muted`, `--glass-accent`, `--glass-surface`, and
+  `--glass-hover` plus existing theme classes instead of scattering fixed color values.
+- Apply the palette consistently to navigation, tables, channels, inputs, dialogs, hover,
+  selected, and focus states. Keep selected channels visually distinct and ordered first.
+- Preserve semantic green for success/positive, amber for pending/stale, and red for
+  failed/destructive states; never replace those distinctions with the accent color.
+
+Inspect [shared theme CSS](../../../frontend/styles/globals.css) and
+[Tailwind colors](../../../frontend/tailwind.config.js) as the implementation authority.
+Verify legibility and desktop/mobile screenshots after color changes; do not alter data
+or layout workflows solely to reproduce the reference screenshot.
 
 ## Inputs, Outputs, and Contracts
 Input: verified API responses for signals, candles, indicators, outcomes, context, provider

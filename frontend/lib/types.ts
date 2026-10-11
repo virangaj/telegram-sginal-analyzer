@@ -137,6 +137,23 @@ export interface MarketOverview {
   market_open: boolean;
 }
 
+export interface MarketQuote {
+  provider: string;
+  symbol: string;
+  price_basis: string;
+  price: number | null;
+  bid: number | null;
+  ask: number | null;
+  source: string | null;
+  timestamp: string | null;
+  fetched_at: string | null;
+  quote_age_seconds: number | null;
+  market_state: string;
+  status: 'live' | 'stale' | 'closed' | 'unknown' | 'unavailable';
+  day_change_percent: number | null;
+  error: string | null;
+}
+
 export interface DashboardResponse {
   market_overview: MarketOverview;
   latest_signals: Signal[];

@@ -1,0 +1,1 @@
+ALTER TABLE telegram_publications ADD COLUMN destination_message_id INTEGER;
