@@ -10,11 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database.base import init_db
-from app.telegram.listener import TelegramListener, MessageProcessor
+from app.telegram.listener import get_telegram_listener, MessageProcessor
 from app.parsers.implementations import init_parsers
 
 # Import API routes
-from app.api.routes import signals, channels, message_types
+from app.api.routes import signals, channels, message_types, telegram_auth
 
 # Configure logging
 logging.basicConfig(level=settings.log_level)
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 # Initialize telegram listener at module level
-telegram_listener: TelegramListener = TelegramListener()
+telegram_listener = get_telegram_listener()
 
 
 @asynccontextmanager
@@ -39,17 +39,15 @@ async def lifespan(app: FastAPI):
     init_parsers()
     logger.info("Signal parsers initialized")
     
+    telegram_listener.register_handler(MessageProcessor.store_and_parse_message)
+    MessageProcessor.listener = telegram_listener
+    telegram_listener.refresh_channels()
     if settings.enable_telegram_listener:
         try:
             await telegram_listener.connect()
             logger.info("Connected to Telegram")
             
-            # Register handlers
-            telegram_listener.register_handler(MessageProcessor.store_and_parse_message)
-            logger.info("Message handlers registered")
-            
-            # Start listening in background
-            asyncio.create_task(telegram_listener.start_listening())
+            await telegram_listener.ensure_listening()
             logger.info("Telegram listener started")
         except Exception as e:
             logger.error(f"Failed to start Telegram listener: {e}")
@@ -76,7 +74,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r"http://(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -86,6 +84,7 @@ app.add_middleware(
 app.include_router(signals.router)
 app.include_router(channels.router)
 app.include_router(message_types.router)
+app.include_router(telegram_auth.router)
 
 
 # Health check endpoint

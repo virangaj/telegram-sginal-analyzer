@@ -11,6 +11,8 @@ interface SignalsListProps {
   isLoading?: boolean;
   error?: string | null;
   onSignalClick?: (signal: Signal) => void;
+  onEditSignal?: (signal: Signal) => void;
+  onDeleteSignal?: (signal: Signal) => void;
 }
 
 export const SignalsList: React.FC<SignalsListProps> = ({
@@ -18,6 +20,8 @@ export const SignalsList: React.FC<SignalsListProps> = ({
   isLoading = false,
   error = null,
   onSignalClick,
+  onEditSignal,
+  onDeleteSignal,
 }) => {
   if (isLoading) {
     return (
@@ -51,6 +55,8 @@ export const SignalsList: React.FC<SignalsListProps> = ({
           key={signal.id}
           signal={signal}
           onClick={onSignalClick}
+          onEdit={onEditSignal}
+          onDelete={onDeleteSignal}
         />
       ))}
     </div>

@@ -13,7 +13,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -43,6 +43,8 @@ wheels/
 *.db
 *.sqlite
 *.sqlite3
+*.session
+*.session-*
 
 # Node
 node_modules/

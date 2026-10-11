@@ -26,6 +26,9 @@ class TelegramListener:
 
     def __init__(self):
         self.client: Optional[TelegramClient] = None
+        self.enabled_chat_ids: set[int] = set()
+        self.is_listening = False
+        self.listening_task: Optional[asyncio.Task] = None
 
         self.message_handlers: list[
             Callable[[NewMessage.Event], Awaitable[None]]
@@ -53,9 +56,8 @@ class TelegramListener:
             settings.telegram_api_hash,
         )
 
-        await self.client.start(
-            phone=settings.telegram_phone
-        )
+        await self.client.connect()
+        self._stopping = False
 
         logger.info("Connected to Telegram")
 
@@ -115,11 +117,10 @@ class TelegramListener:
 
         self._stopping = False
 
-        @self.client.on(
-            NewMessage(
-                chats=settings.channel_ids
-            )
-        )
+        self.refresh_channels()
+        self.is_listening = True
+
+        @self.client.on(NewMessage(incoming=True))
         async def handle_message(event: NewMessage.Event):
             """
             Handle incoming Telegram messages.
@@ -127,6 +128,9 @@ class TelegramListener:
             The handlers are awaited here, but parsing itself is
             handled as a background task by MessageProcessor.
             """
+
+            if not self.accepts_channel(event.chat_id):
+                return
 
             try:
                 logger.debug(
@@ -159,7 +163,7 @@ class TelegramListener:
 
         logger.info(
             "Listening to Telegram channels: %s",
-            settings.channel_ids,
+            sorted(self.enabled_chat_ids),
         )
 
         try:
@@ -172,9 +176,52 @@ class TelegramListener:
             raise
 
         finally:
+            self.is_listening = False
             logger.info(
                 "Telegram listener stopped"
             )
+
+    async def ensure_listening(self) -> None:
+        if not self.client or not await self.client.is_user_authorized():
+            return
+        if self.listening_task and not self.listening_task.done():
+            return
+        self.listening_task = asyncio.create_task(self.start_listening())
+
+    async def sync_channels(self, db: Session) -> None:
+        if not self.client or not await self.client.is_user_authorized():
+            raise RuntimeError("Telegram authentication required")
+        existing = {
+            channel.external_channel_id: channel
+            for channel in db.query(Channel).filter(Channel.platform == "telegram").all()
+        }
+        async for dialog in self.client.iter_dialogs():
+            if not (dialog.is_channel or dialog.is_group):
+                continue
+            external_id = str(dialog.id)
+            channel = existing.get(external_id)
+            if channel is None:
+                channel = Channel(
+                    platform="telegram", external_channel_id=external_id,
+                    channel_name=dialog.name or external_id,
+                    enabled=dialog.id in settings.channel_ids,
+                )
+                db.add(channel)
+                existing[external_id] = channel
+            else:
+                channel.channel_name = dialog.name or external_id
+        db.commit()
+        self.refresh_channels()
+
+    def refresh_channels(self) -> None:
+        with SessionLocal() as db:
+            channels = db.query(Channel).filter(
+                Channel.platform == "telegram", Channel.enabled.is_(True)
+            ).all()
+            self.enabled_chat_ids = {int(channel.external_channel_id) for channel in channels}
+
+    def accepts_channel(self, chat_id: Optional[int]) -> bool:
+        return chat_id in self.enabled_chat_ids
 
     async def stop_listening(self) -> None:
         """
@@ -241,6 +288,13 @@ class TelegramListener:
         logger.info(
             "All background tasks completed"
         )
+
+
+_telegram_listener = TelegramListener()
+
+
+def get_telegram_listener() -> TelegramListener:
+    return _telegram_listener
 
 
 class MessageProcessor:

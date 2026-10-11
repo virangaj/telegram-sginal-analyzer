@@ -1,5 +1,86 @@
 # Detailed Architecture
 
+## Current Baseline and Specification Status
+
+This section and the linked contracts distinguish verified runtime behavior from design
+targets. Older examples below are scaffold-era guidance, not proof of implemented features.
+Source code and current OpenAPI are authoritative when those examples disagree.
+
+The application analyzes externally published trading signals, initially XAU/USD, without
+automatically trading. Analytical signal quality, theoretical trade performance, and
+observed executable results are different products and must remain separate.
+
+| Layer | Current Owner | Verified State |
+|---|---|---|
+| Configuration/startup | `backend/app/config.py`, `main.py` | FastAPI; Pydantic settings; local-origin CORS |
+| Ingestion/auth | `backend/app/telegram/listener.py`, `api/routes/telegram_auth.py` | Telethon session; local single-account login; raw-message-first ingestion; asyncio tasks |
+| Channels | `api/routes/channels.py` | Discovery and database-enabled live filtering; local-only management |
+| Parsing | `parsers/base.py`, `registry.py`, `implementations/examples.py` | Text-only plugins; required entries/SL/TP; metadata/revisions need extension |
+| Persistence | `database/models.py`, `database/base.py` | SQLite default; synchronous SQLAlchemy; create_all and a legacy-status repair |
+| Market data | `market/base.py`, `market/providers/` | Async abstraction; no concrete provider implementation verified |
+| Analytics | `analysis/engine.py`, `analysis/regime.py`, `trade/entry_engine.py`, `risk/engine.py` | Standalone helpers and placeholders; no complete wired technical/backtesting pipeline |
+| API | `api/routes/`, `api/schemas.py` | Signals, channels, message types, Telegram auth; inspect OpenAPI before adding clients |
+| Frontend | `frontend/pages`, `components`, `lib` | Next.js Pages Router/React 18, TypeScript, Axios, Zustand, Tailwind, Recharts, Lucide |
+| Tests/deployment | `backend/tests`, `docker` | Focused channel/database tests; Docker artifacts; no verified frontend test framework or CI |
+
+Alembic is declared but has no configured migration environment or revision source.
+PostgreSQL, durable queues, full indicator calculations, market context, and performance
+evaluation are future work, not existing guarantees. Pandas/NumPy are not direct declared
+dependencies. Keep current technologies until a bounded requirement justifies evolution;
+do not introduce Celery, Redis, a new router, or a chart library by default.
+
+Parser selection currently auto-detects before resolving message types. Channel parser
+settings and message-type configuration must not be described as enforced routing without
+implementing and testing that behavior. Some frontend API methods refer to absent routes.
+
+## Shared Contracts
+
+- [Data model and analytics responses](docs/data-model.md): current-to-target mapping and nullability.
+- [Signal lifecycle](docs/signal-lifecycle.md): parsing, revisions, triggers, and outcomes.
+- [Market data contracts](docs/market-data-contracts.md): timestamps, capabilities, feed identity, and quality.
+- [Backtesting rules](docs/backtesting-rules.md): replay evidence, ambiguity, and execution assumptions.
+- [Analytics metrics](docs/analytics-metrics.md): formulas, denominators, units, and uncertainty.
+- [Development guide](DEVELOPMENT.md): existing extension recipes; verify examples against source.
+
+These linked contracts guide future implementation. They do not silently change runtime
+schemas or authorize a broad rewrite. A contract change requires compatible consumers,
+validation, migrations/backfills where needed, and focused tests.
+
+## Mandatory Quantitative and Security Rules
+
+1. At evaluation time T, use only signal revisions, prices, closed candles, confirmed
+  structure, and external releases available by T. Record each item's availability time.
+2. Future candles, right-hand swing confirmation, later macro releases, and corrected
+  history must not leak into earlier assessments. Label historical availability assumptions.
+3. If OHLC cannot establish SL/TP or entry/exit ordering, report ambiguity conservatively;
+  never choose the favorable path by default.
+4. Never mix brokers/feeds without documenting symbols, calendars, price bases, spreads,
+  conversion, and alignment. Spot gold and gold futures are not interchangeable series.
+5. Record exact fill, cost, partial-exit, cancellation, expiry, gap, coverage, and data-version
+  assumptions. Missing observations are not evidence that a target or stop was not hit.
+6. Keep signal quality, hypothetical performance, and observed executable results distinct.
+  Never claim a price was executable without sufficient quote/fill evidence.
+7. Never automatically place broker orders, promise profits, or portray past performance
+  as a guarantee of future returns.
+8. Never commit or log credentials, login codes, passwords, Telegram session files, or
+  sensitive raw payloads. A Telegram session is a bearer credential, not application auth.
+
+Remote/multi-user deployment requires explicit application authentication, per-account
+ownership, authorization, TLS, secret management, and retention design. Do not bypass
+local management guards or widen CORS to solve an unrelated deployment problem.
+
+## Verification and Known Gaps
+
+Run backend checks from `backend`: `python -m pytest tests -q`. Run frontend checks from
+`frontend`: `npm run type-check`; use `npm run build` for routing/build changes and browser
+interaction/screenshots for affected workflows. Provider checks must be opt-in and secret-safe.
+No configured Alembic upgrade command is currently a valid schema gate until baseline setup.
+
+Numerical regression priorities include overlapping SELL/MORE SELL extraction, conflicting
+nearest-target versus average-target R:R, invalid/empty levels, zero denominators, contract
+units, missing quote provenance, timezone handling, and concurrent ingestion idempotency.
+Record these as gaps; do not fix them as part of a documentation-only task.
+
 ## Core Design Principle: Configurable Signal Parsers
 
 The application is built around the concept of **signal parser plugins**. Each Telegram channel can send signals in a different format. Instead of hard-coding logic for each format, we:

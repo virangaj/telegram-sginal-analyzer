@@ -2,9 +2,24 @@
 API schemas for request/response validation
 """
 
-from typing import Optional, List
-from pydantic import BaseModel
+from typing import Optional, List, Literal, Annotated
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
+
+
+PositivePrice = Annotated[float, Field(gt=0, allow_inf_nan=False)]
+
+
+class SignalUpdateSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: Optional[str] = Field(default=None, min_length=1, max_length=32)
+    direction: Optional[Literal["BUY", "SELL"]] = None
+    order_type: Optional[Literal["MARKET", "LIMIT", "STOP"]] = None
+    entries: Optional[List[PositivePrice]] = Field(default=None, min_length=1)
+    stop_loss: Optional[PositivePrice] = None
+    take_profits: Optional[List[PositivePrice]] = Field(default=None, min_length=1)
+    confidence: Optional[float] = Field(default=None, ge=0, le=1, allow_inf_nan=False)
 
 
 class NormalizedSignalSchema(BaseModel):
@@ -89,6 +104,7 @@ class SignalSchema(BaseModel):
     id: int
     message_id: int
     channel_id: int
+    channel_name: Optional[str] = None
     message_type_id: Optional[int]
     symbol: str
     direction: str
@@ -113,6 +129,7 @@ def signal_to_schema(signal) -> "SignalSchema":
         id=signal.id,
         message_id=signal.message_id,
         channel_id=signal.channel_id,
+        channel_name=signal.channel.channel_name if signal.channel else None,
         message_type_id=signal.message_type_id,
         symbol=signal.symbol,
         direction=signal.direction,

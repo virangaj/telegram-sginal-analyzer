@@ -4,16 +4,18 @@ Signal service for parsing and storing signals
 
 import logging
 import json
+import math
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, select, delete, inspect, Table, MetaData
 
 from app.parsers.base import NormalizedSignal
 from app.parsers.registry import get_registry
 from app.database.models import (
     Signal, Message, SignalMessageType, SignalEntry,
-    SignalTakeProfit, ParseStatus, SignalStatus
+    SignalTakeProfit, ParseStatus, SignalStatus, Analysis, AnalysisRun,
+    MarketAnalysis, Trade, TradeSetup, TradeSetupEntry, TradeSetupTarget
 )
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,83 @@ logger = logging.getLogger(__name__)
 
 class SignalService:
     """Service for managing signals"""
+
+    @staticmethod
+    def _clear_analysis(db: Session, signal_ids) -> None:
+        if inspect(db.connection()).has_table("signal_events"):
+            events = Table("signal_events", MetaData(), autoload_with=db.connection(), resolve_fks=False)
+            db.execute(delete(events).where(events.c.signal_id.in_(signal_ids)))
+        setup_ids = select(TradeSetup.id).where(TradeSetup.signal_id.in_(signal_ids))
+        for model in (TradeSetupEntry, TradeSetupTarget):
+            db.execute(delete(model).where(model.trade_setup_id.in_(setup_ids)), execution_options={"synchronize_session": False})
+        for model in (TradeSetup, MarketAnalysis, AnalysisRun, Analysis):
+            db.execute(delete(model).where(model.signal_id.in_(signal_ids)), execution_options={"synchronize_session": False})
+
+    @staticmethod
+    def delete_signals(db: Session, signal_id: Optional[int] = None) -> int:
+        signal_ids = select(Signal.id)
+        if signal_id is not None:
+            signal_ids = signal_ids.where(Signal.id == signal_id)
+        try:
+            SignalService._clear_analysis(db, signal_ids)
+            for model in (Trade, SignalEntry, SignalTakeProfit):
+                db.execute(delete(model).where(model.signal_id.in_(signal_ids)), execution_options={"synchronize_session": False})
+            result = db.execute(delete(Signal).where(Signal.id.in_(signal_ids)), execution_options={"synchronize_session": False})
+            db.commit()
+            db.expire_all()
+            return result.rowcount
+        except Exception:
+            db.rollback()
+            raise
+
+    @staticmethod
+    def update_signal(db: Session, signal_id: int, changes: dict) -> Optional[Signal]:
+        signal = db.get(Signal, signal_id)
+        if signal is None:
+            return None
+        if not changes or any(value is None for key, value in changes.items() if key != "confidence"):
+            raise ValueError("Provide at least one update; required price and instrument fields cannot be null")
+        if db.query(Trade.id).filter(Trade.signal_id == signal_id).first():
+            raise ValueError("Signals with trade records cannot be edited; preserve execution history")
+        original = json.loads(signal.normalized_json)
+        current = dict(original)
+        current.update(
+            symbol=signal.symbol, direction=signal.direction, order_type=signal.order_type,
+            entries=[entry.entry_price for entry in sorted(signal.entries, key=lambda item: item.sequence)],
+            stop_loss=signal.stop_loss,
+            take_profits=[target.price for target in sorted(signal.take_profits, key=lambda item: item.sequence)],
+            confidence=signal.confidence,
+        )
+        updated = NormalizedSignal.model_validate({**current, **changes})
+        prices = updated.entries + updated.take_profits + [updated.stop_loss]
+        if not updated.entries or not updated.take_profits or any(not math.isfinite(price) or price <= 0 for price in prices):
+            raise ValueError("Entries, stop loss, and targets must contain finite positive prices")
+        if not updated.symbol.strip() or updated.direction not in ("BUY", "SELL") or updated.order_type not in ("MARKET", "LIMIT", "STOP"):
+            raise ValueError("Unsupported instrument, direction, or order type")
+        if updated.direction == "BUY":
+            valid = updated.stop_loss < min(updated.entries) and all(target > max(updated.entries) for target in updated.take_profits)
+        else:
+            valid = updated.stop_loss > max(updated.entries) and all(target < min(updated.entries) for target in updated.take_profits)
+        if not valid:
+            raise ValueError("Stop loss and targets must be on the correct side of every entry")
+        history = list(original.get("manual_edits", []))
+        history.append({"edited_at": datetime.now(timezone.utc).isoformat(), "before": NormalizedSignal.model_validate(current).model_dump()})
+        data = updated.model_dump()
+        data["manual_edits"] = history
+        try:
+            SignalService._clear_analysis(db, select(Signal.id).where(Signal.id == signal_id))
+            for field in ("symbol", "direction", "order_type", "stop_loss", "confidence"):
+                setattr(signal, field, getattr(updated, field))
+            signal.entries = [SignalEntry(entry_price=price, sequence=sequence) for sequence, price in enumerate(updated.entries, 1)]
+            signal.take_profits = [SignalTakeProfit(price=price, sequence=sequence) for sequence, price in enumerate(updated.take_profits, 1)]
+            signal.normalized_json = json.dumps(data, allow_nan=False)
+            signal.status = SignalStatus.PENDING
+            db.commit()
+            db.refresh(signal)
+            return signal
+        except Exception:
+            db.rollback()
+            raise
     
     @staticmethod
     async def parse_and_store_signal(

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     
     # Market Data
     market_data_provider: str = "yfinance"
+    market_data_base_url: str = "https://api.gold-api.com"
+    market_data_poll_interval_seconds: int = 30
+    market_data_stale_after_seconds: int = 300
     
     # Logging
     log_level: str = "INFO"
