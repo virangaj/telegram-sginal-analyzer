@@ -13,10 +13,21 @@ class GoldSignalParser(SignalParser):
         super().__init__(name)
 
     def can_parse(self, message: str) -> bool:
-        return bool(re.search(r"\b(?:GOLD|XAU\s*/?\s*USD)\b", message, re.IGNORECASE) and re.search(r"\b(?:BUY|SELL)\b", message, re.IGNORECASE))
+        text = normalize_gold_text(message)
+        return bool(re.search(r"\b(?:GOLD|XAU\s*/?\s*USD)\b", text) and re.search(r"\b(?:BUY|SELL)\b", text))
+
+    def review_reason(self, message: str) -> Optional[str]:
+        text = normalize_gold_text(message)
+        if re.search(r"\b(?:CANCEL(?:LED)?|CLOSED|HIT|RESULTS?|UPDATE|BREAKEVEN)\b", text):
+            return None
+        if re.search(r"\bRANGE\s*:", text) or re.search(
+            r"\bENTRY(?:\s+(?:POINT|PRICE))?\s*[:=@-]?\s*\d+(?:\.\d+)?\s*[-–]\s*\d", text
+        ):
+            return "Entry range requires range-aware storage; endpoints are not scaling fills"
+        return "CFD signal is incomplete, ambiguous, or has invalid entry/SL/TP levels"
 
     async def parse(self, message: str) -> Optional[NormalizedSignal]:
-        text = message.upper()
+        text = normalize_gold_text(message)
         if not self.can_parse(text) or re.search(r"\b(?:CANCEL(?:LED)?|CLOSED|HIT|RESULTS?|UPDATE|BREAKEVEN)\b", text):
             return None
         directions = set(re.findall(r"\b(BUY|SELL)\b", text))
@@ -31,12 +42,16 @@ class GoldSignalParser(SignalParser):
         number = r"\d+(?:\.\d+)?"
         for raw_line in text.splitlines():
             line = re.sub(r"^[^A-Z0-9]+", "", raw_line.strip())
-            field = re.match(r"^(ENTRY|ENTRIES|SL|STOP\s*LOSS|TP\s*\d*|TPS|TAKE\s*PROFIT\s*\d*)\s*[:=@-]?\s*(.*)$", line)
+            field = re.match(
+                r"^(ENTRY(?:\s+(?:POINT|PRICE))?|ENTRIES|SL|STOP\s*LOSS|TP\s*\d*|TPS|TARGET\s*\d*|TAKE\s*PROFIT\s*\d*)\s*[:=@-]?\s*(.*)$",
+                line,
+            )
             inline = re.match(rf"^(?:(?:GOLD|XAU\s*/?\s*USD|MORE)\s+)?{direction}\s+(?:(?:LIMIT|STOP|MARKET|NOW)\s+)?[:=@]?\s*({number})\s*$", line)
             if inline:
                 entries.append(float(inline.group(1)))
             elif field:
                 label, values = field.groups()
+                values = re.sub(r"\s*\([^)]*\)\s*$", "", values).strip()
                 if not re.fullmatch(rf"{number}(?:\s*,\s*{number})*\s*", values):
                     return None
                 prices = [float(value.strip()) for value in values.split(",")]
@@ -56,6 +71,17 @@ class GoldSignalParser(SignalParser):
             return None
         return NormalizedSignal(symbol="XAUUSD", direction=direction, order_type=order_type,
                                 entries=entries, stop_loss=stop, take_profits=targets, provider="telegram")
+
+
+def normalize_gold_text(message: str) -> str:
+    text = unicodedata.normalize("NFKC", message).upper().replace("*", "").replace("_", " ").replace("–", "-")
+    lines = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        line = re.sub(r"^[^A-Z0-9]+", "", line)
+        line = re.sub(r"[^A-Z0-9)]+$", "", line)
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def normalize_crypto_text(message: str) -> str:
@@ -82,6 +108,8 @@ class CryptoSignalParser(GoldSignalParser):
 
     def review_reason(self, message: str) -> str:
         text = normalize_crypto_text(message)
+        if re.search(r"\b(?:CANCEL(?:LED)?|CLOSED|HIT|RESULTS?|UPDATE|BREAKEVEN)\b", text):
+            return ""
         if re.search(r"\bRANGE\s*:", text):
             return "Entry range requires range-aware storage; endpoints are not scaling fills"
         if re.search(r"(?:TP\s*\d*|TARGETS?|TAKE\s*PROFIT)[\s\S]*?\d\s*%", text):

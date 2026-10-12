@@ -11,7 +11,7 @@ from telethon.errors import ChatWriteForbiddenError
 from telethon import types
 
 from app.database.models import Base, Channel, Message, Signal, SignalEntry, SignalTakeProfit, SignalStatus, TelegramPublication
-from app.telegram.publisher import format_signal, publish_raw_message, publish_signal, delete_published_messages
+from app.telegram.publisher import _looks_like_raw_signal, format_signal, publish_raw_message, publish_signal, delete_published_messages
 from app.telegram import publisher, listener
 
 
@@ -283,3 +283,16 @@ def test_review_crypto_signal_is_forwarded_raw_to_crypto_destination(stored_sign
         client.get_input_entity.assert_awaited_with(-5349907572)
 
     asyncio.run(check())
+
+
+def test_cfds_raw_forwarding_requires_entry_target_and_stop_sections():
+    message = SimpleNamespace(
+        raw_text="GOLD BUY LIMIT\nEntry: 4175.5\nTP1: 4185.5\nSL: 4163.5",
+        channel=SimpleNamespace(category="cfds"),
+    )
+    commentary = SimpleNamespace(
+        raw_text="GOLD BUY is risky; wait for confirmation",
+        channel=SimpleNamespace(category="cfds"),
+    )
+    assert _looks_like_raw_signal(message)
+    assert not _looks_like_raw_signal(commentary)

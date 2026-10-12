@@ -337,7 +337,7 @@ SL: 1980
 
 Labeled `Entry:` values and explicit MARKET/LIMIT/STOP orders are also supported.
 Missing levels, conflicting directions, wrong-side prices, follow-up/result messages, and
-entry ranges such as `2000-2010` remain unparsed for review rather than being guessed.
+entry ranges such as `2000-2010` remain unparsed and are stored for review rather than being guessed.
 Legacy configured parser names resolve to the same validated gold parser.
 
 Crypto channels additionally recognize LONG/SHORT as BUY/SELL, markdown/Unicode-bold
