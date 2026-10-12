@@ -161,3 +161,86 @@ def test_management_api_validation_and_confirmation(database):
             assert (await client.delete("/api/signals?confirm=true")).json() == {"deleted": 1}
 
     asyncio.run(check())
+
+
+def test_signal_category_filter_uses_assigned_channel_category(database):
+    crypto_channel = Channel(platform="telegram", external_channel_id="-100999", channel_name="Crypto room", category="crypto")
+    database.add(crypto_channel)
+    database.flush()
+    message = Message(channel_id=crypto_channel.id, external_message_id="crypto", raw_text="BTCUSDT BUY", received_at=datetime(2026, 1, 2))
+    database.add(message)
+    database.flush()
+    crypto_signal = Signal(message_id=message.id, channel_id=crypto_channel.id, symbol="BTCUSDT", direction="BUY", order_type="MARKET", stop_loss=90, normalized_json="{}")
+    crypto_signal.entries = [SignalEntry(entry_price=100, sequence=1)]
+    crypto_signal.take_profits = [SignalTakeProfit(price=120, sequence=1)]
+    database.add(crypto_signal)
+    database.commit()
+
+    assert [signal.symbol for signal in SignalService.get_latest_signals(database, category="crypto")] == ["BTCUSDT"]
+    assert {signal.symbol for signal in SignalService.get_latest_signals(database, category="cfds")} == {"XAUUSD"}
+
+    app = FastAPI()
+    app.include_router(signals.router)
+    app.dependency_overrides[base.get_db] = lambda: database
+
+    async def check_api():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
+            crypto = await client.get("/api/signals", params={"category": "crypto"})
+            cfds = await client.get("/api/signals", params={"category": "cfds"})
+            invalid = await client.get("/api/signals", params={"category": "stocks"})
+            assert [signal["category"] for signal in crypto.json()] == ["crypto"]
+            assert all(signal["category"] == "cfds" for signal in cfds.json())
+            assert invalid.status_code == 422
+
+    asyncio.run(check_api())
+
+
+@pytest.mark.parametrize("category,text,expected_symbol", [
+    ("crypto", "BTCUSDT BUY 100\nTP: 120\nSL: 90", "BTCUSDT"),
+    ("cfds", "GOLD BUY 2000\nTP: 2020\nSL: 1990", "XAUUSD"),
+    ("crypto", "GOLD BUY 2000\nTP: 2020\nSL: 1990", None),
+    ("cfds", "BTCUSDT BUY 100\nTP: 120\nSL: 90", None),
+    ("stocks", "GOLD BUY 2000\nTP: 2020\nSL: 1990", None),
+])
+def test_ingestion_routes_parsing_by_channel_category(database, category, text, expected_symbol):
+    from app.parsers.implementations import init_parsers
+    from app.database.models import ParseStatus
+
+    init_parsers()
+    channel = database.query(Channel).first()
+    channel.category = category
+    message = Message(channel_id=channel.id, external_message_id="category-routing", raw_text=text, received_at=datetime(2026, 1, 2))
+    database.add(message)
+    database.commit()
+
+    result = asyncio.run(SignalService.parse_and_store_signal(message.id, text, database))
+    database.refresh(message)
+    assert message.raw_text == text
+    if expected_symbol:
+        assert result.symbol == expected_symbol
+        assert result.channel.category == category
+        assert message.parse_status == ParseStatus.SUCCESS
+    else:
+        assert result is None
+        assert message.parse_status == ParseStatus.FAILED
+        assert database.query(Signal).filter_by(message_id=message.id).count() == 0
+
+
+def test_partial_crypto_message_is_stored_for_review_without_signal(database):
+    from app.parsers.implementations import init_parsers
+    from app.database.models import ParseStatus
+
+    init_parsers()
+    channel = database.query(Channel).first()
+    channel.category = "crypto"
+    text = "Coin: PNUT /USDT\nDirection: LONG\nEntry: Limit Order\nRange: 0.04797 - 0.03892\nTP1: 15%\nStop Loss: 0.03723"
+    message = Message(channel_id=channel.id, external_message_id="partial-crypto", raw_text=text, received_at=datetime(2026, 1, 2))
+    database.add(message)
+    database.commit()
+    result = asyncio.run(SignalService.parse_and_store_signal(message.id, text, database))
+    assert result is None
+    database.refresh(message)
+    assert message.parse_status == ParseStatus.REVIEW
+    assert "Entry range" in message.parse_error
+    assert message.raw_text == text
+    assert database.query(Signal).filter_by(message_id=message.id).count() == 0

@@ -66,7 +66,8 @@ async def publish_signal_manually(signal_id: int, confirm: bool = Query(False), 
         raise HTTPException(409, "Signal already has a publication record or is not eligible to publish")
     if status != "sent":
         raise HTTPException(502, f"Telegram publication status: {status}. Check the chat and account permissions.")
-    return {"status": status, "destination_chat_id": str(get_telegram_listener().client and __import__('app.config', fromlist=['settings']).settings.telegram_publish_chat_id)}
+    from app.config import settings
+    return {"status": status, "destination_chat_id": str(settings.telegram_publish_chat_id_for(signal.channel.category))}
 
 
 @router.post("/{signal_id}", response_model=SignalSchema, dependencies=[Depends(require_local_request)])
@@ -83,11 +84,12 @@ async def update_signal(signal_id: int, data: SignalUpdateSchema, db: Session = 
 @router.get("", response_model=list[SignalSchema])
 async def get_signals(
     symbol: str = Query(None),
+    category: str = Query("cfds", pattern="^(crypto|cfds)$"),
     limit: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db)
 ):
     """Get latest signals with optional filtering"""
-    signals = SignalService.get_latest_signals(db, symbol=symbol, limit=limit)
+    signals = SignalService.get_latest_signals(db, symbol=symbol, category=category, limit=limit)
     return [signal_to_schema(s) for s in signals]
 
 

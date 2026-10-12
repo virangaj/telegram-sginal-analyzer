@@ -39,6 +39,7 @@ class Channel(Base):
     external_channel_id = Column(String, nullable=False, index=True)  # "-1002422665513" for Telegram
     channel_name = Column(String, nullable=False)
     enabled = Column(Boolean, default=True, index=True)
+    category = Column(String, nullable=False, default="cfds", index=True)
     parser_type = Column(String, nullable=True)  # Can enforce specific parser
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

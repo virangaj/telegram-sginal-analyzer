@@ -13,7 +13,7 @@ from sqlalchemy import func, select, delete, inspect, Table, MetaData
 from app.parsers.base import NormalizedSignal
 from app.parsers.registry import get_registry
 from app.database.models import (
-    Signal, Message, SignalMessageType, SignalEntry,
+    Signal, Message, Channel, SignalMessageType, SignalEntry,
     SignalTakeProfit, ParseStatus, SignalStatus, Analysis, AnalysisRun,
     MarketAnalysis, Trade, TradeSetup, TradeSetupEntry, TradeSetupTarget
 )
@@ -132,12 +132,18 @@ class SignalService:
             
             # Get registry and parse
             registry = get_registry()
-            normalized = await registry.parse_message(message_text)
+            normalized = await registry.parse_message(message_text, category=message.channel.category)
             
             if not normalized:
                 # Parsing failed - mark message and return
                 message.parse_status = ParseStatus.FAILED
-                message.parse_error = "No parser could handle this message"
+                message.parse_error = f"No {message.channel.category} parser could handle this message"
+                from app.parsers.implementations.gold import CryptoSignalParser
+
+                crypto_parser = CryptoSignalParser()
+                if message.channel.category == "crypto" and crypto_parser.can_parse(message_text):
+                    message.parse_status = ParseStatus.REVIEW
+                    message.parse_error = crypto_parser.review_reason(message_text)
                 message.processed_at = datetime.utcnow()
                 db.commit()
                 logger.warning("Could not parse message %s", message_id)
@@ -263,6 +269,7 @@ class SignalService:
     def get_latest_signals(
         db: Session,
         symbol: Optional[str] = None,
+        category: Optional[str] = None,
         limit: int = 10
     ) -> list[Signal]:
         """Get latest signals"""
@@ -270,6 +277,9 @@ class SignalService:
         
         if symbol:
             query = query.filter(Signal.symbol == symbol)
+
+        if category:
+            query = query.join(Channel, Signal.channel_id == Channel.id).filter(Channel.category == category)
         
         return query.limit(limit).all()
     

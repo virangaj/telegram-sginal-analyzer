@@ -118,8 +118,14 @@ def test_channel_api_persists_selection_and_blocks_remote_management(monkeypatch
             response = await client.post(f"/api/channels/{channel_id}", json={"enabled": True})
             assert response.status_code == 200
             assert response.json()["enabled"]
+            assert response.json()["category"] == "cfds"
             assert telegram.accepts_channel(-100123)
             assert (await client.get("/api/channels")).json()[0]["enabled"]
+            response = await client.post(f"/api/channels/{channel_id}", json={"category": "crypto"})
+            assert response.status_code == 200
+            assert response.json()["category"] == "crypto"
+            assert (await client.get("/api/channels")).json()[0]["category"] == "crypto"
+            assert (await client.post(f"/api/channels/{channel_id}", json={"category": "stocks"})).status_code == 422
             response = await client.post(f"/api/channels/{channel_id}", json={"enabled": False})
             assert response.status_code == 200
             assert not telegram.accepts_channel(-100123)
@@ -188,5 +194,40 @@ def test_local_cors_supports_credentials_and_channel_preflight():
             )
             assert response.status_code == 400
             assert "access-control-allow-origin" not in response.headers
+
+    asyncio.run(check())
+
+
+def test_app_lifespan_does_not_wait_for_telegram_connection(monkeypatch):
+    from app import main
+
+    started = asyncio.Event()
+    finished = asyncio.Event()
+
+    async def blocked_connect():
+        started.set()
+        await finished.wait()
+
+    fake_listener = SimpleNamespace(
+        register_handler=lambda handler: None,
+        refresh_channels=lambda: None,
+        connect=AsyncMock(side_effect=blocked_connect),
+        ensure_listening=AsyncMock(),
+        disconnect=AsyncMock(),
+        client=None,
+    )
+    monkeypatch.setattr(main, "telegram_listener", fake_listener)
+    monkeypatch.setattr(main, "init_db", lambda: None)
+    monkeypatch.setattr(main, "init_parsers", lambda: None)
+    monkeypatch.setattr(main.settings, "enable_telegram_listener", True)
+    monkeypatch.setattr(main.settings, "telegram_connect_timeout_seconds", 30)
+    monkeypatch.setattr(main.market, "close_market_provider", AsyncMock())
+
+    async def check():
+        async with main.lifespan(main.app):
+            await asyncio.wait_for(started.wait(), timeout=0.2)
+            assert fake_listener.connect.await_count == 1
+        assert fake_listener.connect.await_count == 1
+        assert fake_listener.ensure_listening.await_count == 0
 
     asyncio.run(check())

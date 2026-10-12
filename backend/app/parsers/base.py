@@ -44,6 +44,8 @@ class SignalParser(ABC):
     4. If failed, parse_error is recorded for later reprocessing
     """
     
+    category: Optional[str] = None
+
     def __init__(self, name: str):
         self.name = name
     

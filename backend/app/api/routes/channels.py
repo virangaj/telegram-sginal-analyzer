@@ -3,7 +3,8 @@ API routes for channel management
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from typing import Literal
 from telethon.errors import RPCError
 from sqlalchemy.orm import Session
 
@@ -17,7 +18,10 @@ router = APIRouter(prefix="/api/channels", tags=["channels"], dependencies=[Depe
 
 
 class ChannelSelection(BaseModel):
-    enabled: bool
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = None
+    category: Literal["crypto", "cfds"] | None = None
 
 
 @router.get("", response_model=list[ChannelSchema])
@@ -45,7 +49,12 @@ async def select_channel(channel_id: int, data: ChannelSelection, db: Session = 
     channel = db.query(Channel).filter(Channel.id == channel_id, Channel.platform == "telegram").first()
     if not channel:
         raise HTTPException(404, "Channel not found")
-    channel.enabled = data.enabled
+    if data.enabled is None and data.category is None:
+        raise HTTPException(422, "Provide enabled or category")
+    if data.enabled is not None:
+        channel.enabled = data.enabled
+    if data.category is not None:
+        channel.category = data.category
     db.commit()
     db.refresh(channel)
     listener = get_telegram_listener()

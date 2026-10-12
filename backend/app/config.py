@@ -3,6 +3,7 @@ Configuration management for the Signal Analyzer application
 """
 
 from pydantic_settings import BaseSettings
+from pydantic import AliasChoices, Field
 from typing import Optional
 
 
@@ -15,8 +16,13 @@ class Settings(BaseSettings):
     telegram_phone: str
     telegram_session_name: str = "signal_analyzer"
     telegram_channel_ids: str = ""  # Comma-separated
+    telegram_connect_timeout_seconds: float = 12
     telegram_auto_publish: bool = True
-    telegram_publish_chat_id: int = -1004302136634
+    telegram_publish_forex_chat_id: int = Field(
+        default=-1004302136634,
+        validation_alias=AliasChoices("TELEGRAM_PUBLISH_FOREX_CHAT_ID", "TELEGRAM_PUBLISH_CHAT_ID"),
+    )
+    telegram_publish_crypto_chat_id: int = -5349907572
     
     # Database
     database_url: str = "sqlite:///./signal_analyzer.db"
@@ -52,6 +58,17 @@ class Settings(BaseSettings):
         if not self.telegram_channel_ids:
             return []
         return [int(cid.strip()) for cid in self.telegram_channel_ids.split(",")]
+
+    def telegram_publish_chat_id_for(self, category: str) -> Optional[int]:
+        if category == "crypto":
+            return self.telegram_publish_crypto_chat_id
+        if category in ("cfds", "forex"):
+            return self.telegram_publish_forex_chat_id
+        return None
+
+    @property
+    def telegram_publish_chat_ids(self) -> set[int]:
+        return {self.telegram_publish_forex_chat_id, self.telegram_publish_crypto_chat_id}
     
     class Config:
         env_file = ".env"

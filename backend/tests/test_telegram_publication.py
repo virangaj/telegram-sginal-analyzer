@@ -11,7 +11,7 @@ from telethon.errors import ChatWriteForbiddenError
 from telethon import types
 
 from app.database.models import Base, Channel, Message, Signal, SignalEntry, SignalTakeProfit, SignalStatus, TelegramPublication
-from app.telegram.publisher import format_signal, publish_signal, delete_published_messages
+from app.telegram.publisher import format_signal, publish_raw_message, publish_signal, delete_published_messages
 from app.telegram import publisher, listener
 
 
@@ -42,7 +42,7 @@ def test_invalid_signals_cannot_be_published(field, value):
 @pytest.fixture
 def stored_signal(monkeypatch):
     monkeypatch.setattr(publisher.settings, "telegram_auto_publish", True)
-    monkeypatch.setattr(publisher.settings, "telegram_publish_chat_id", -1004302136634)
+    monkeypatch.setattr(publisher.settings, "telegram_publish_forex_chat_id", -1004302136634)
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as db:
@@ -83,7 +83,7 @@ def test_auto_publication_records_delivery_and_prevents_duplicates(stored_signal
         client.get_input_entity.assert_awaited_with(-1004302136634)
         request = client.call_args.args[0]
         record = db.query(TelegramPublication).one()
-        assert request.message == format_signal(signal)
+        assert request.message == signal.message.raw_text
         assert request.random_id == record.random_id
         assert record.sent_at is not None
         assert record.destination_message_id == 900
@@ -122,14 +122,15 @@ def test_disabled_invalid_and_destination_signals_are_not_sent(stored_signal, mo
         client.assert_not_awaited()
         assert db.query(TelegramPublication).count() == 0
         telegram = listener.TelegramListener()
-        telegram.enabled_chat_ids = {-1004302136634, -100123}
+        telegram.enabled_chat_ids = {-1004302136634, -5349907572, -100123}
         assert not telegram.accepts_channel(-1004302136634)
+        assert not telegram.accepts_channel(-5349907572)
         assert telegram.accepts_channel(-100123)
 
     asyncio.run(check())
 
 
-def test_new_message_pipeline_sends_only_successfully_parsed_signals(stored_signal, monkeypatch):
+def test_new_message_pipeline_sends_raw_recognized_signals(stored_signal, monkeypatch):
     from app.parsers.implementations import init_parsers
 
     signal, db = stored_signal
@@ -150,6 +151,7 @@ def test_new_message_pipeline_sends_only_successfully_parsed_signals(stored_sign
         await listener.MessageProcessor._parse_message_task(failed_id, "not a signal")
         client.assert_awaited_once()
         assert db.query(TelegramPublication).one().status == "sent"
+        assert db.query(TelegramPublication).one().body == text
         assert db.query(Signal).filter(Signal.message_id == message_id).count() == 1
 
     asyncio.run(check())
@@ -231,5 +233,53 @@ def test_legacy_unknown_message_id_does_not_delete_chat_messages(stored_signal):
             await delete_published_messages([signal], db, client)
         client.delete_messages.assert_not_awaited()
         assert db.get(Signal, signal.id) is not None
+
+    asyncio.run(check())
+
+
+def test_explicit_crypto_short_source_can_be_published(stored_signal):
+    async def check():
+        signal, db = stored_signal
+        signal.symbol = "BTCUSDT"
+        signal.direction = "SELL"
+        signal.stop_loss = 94000
+        signal.entries[0].entry_price = 85500
+        signal.take_profits[0].price = 77000
+        signal.message.raw_text = "**FUTURE (SHORT)**\n**BTC / USDT**\nEnter Price: 85500\nTarget: 77000 (+100%)\nSL: 94000 (-100%)"
+        db.commit()
+        client = fake_client()
+        assert await publish_signal(signal, db, client) == "sent"
+        assert client.call_args.args[0].message == signal.message.raw_text
+
+    asyncio.run(check())
+
+
+def test_review_crypto_signal_is_forwarded_raw_to_crypto_destination(stored_signal, monkeypatch):
+    from app.parsers.implementations import init_parsers
+    from app.database.models import ParseStatus
+
+    signal, db = stored_signal
+    signal.channel.category = "crypto"
+    monkeypatch.setattr(publisher.settings, "telegram_publish_crypto_chat_id", -5349907572)
+    text = "XRP/USDT SHORT\nEntry: Market\nRange: 1.3928 - 1.6249\nTargets:\nTP1: 15%\nTP2: 30%\nStop Loss: 1.7083"
+    message = Message(channel_id=signal.channel_id, external_message_id="review-crypto", raw_text=text, received_at=datetime(2026, 1, 1))
+    db.add(message)
+    db.commit()
+    message_id = message.id
+    init_parsers()
+    sessions = sessionmaker(bind=db.get_bind())
+    monkeypatch.setattr(listener, "SessionLocal", sessions)
+    client = fake_client()
+    monkeypatch.setattr(listener.get_telegram_listener(), "client", client)
+
+    async def check():
+        await listener.MessageProcessor._parse_message_task(message_id, text)
+        db.refresh(message)
+        assert message.parse_status == ParseStatus.REVIEW
+        assert db.query(Signal).filter(Signal.message_id == message_id).count() == 0
+        publication = db.query(TelegramPublication).filter_by(source_message_id="review-crypto").one()
+        assert publication.destination_chat_id == "-5349907572"
+        assert publication.body == text
+        client.get_input_entity.assert_awaited_with(-5349907572)
 
     asyncio.run(check())

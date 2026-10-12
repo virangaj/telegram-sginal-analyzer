@@ -84,6 +84,7 @@ export const SignalsList: React.FC<SignalsListProps> = ({
           <tr>
             <th scope="col" className="px-4 py-3 font-medium">Signal No.</th>
             <th scope="col" className="px-4 py-3 font-medium">Signal</th>
+            <th scope="col" className="px-4 py-3 font-medium">Type</th>
             <th scope="col" className="px-4 py-3 font-medium">Direction</th>
             <th scope="col" className="px-4 py-3 font-medium">Entry</th>
             <th scope="col" className="px-4 py-3 font-medium">SL</th>
@@ -102,6 +103,7 @@ export const SignalsList: React.FC<SignalsListProps> = ({
                 {onSignalClick ? <button type="button" onClick={() => onSignalClick(signal)} className="font-semibold text-sky-200 hover:underline">{signal.symbol}</button> : <span className="font-semibold text-white">{signal.symbol}</span>}
                 <time dateTime={signal.created_at} className="mt-1 block whitespace-nowrap text-xs text-slate-400">{new Date(signal.created_at).toLocaleString()}</time>
               </th>
+              <td className="px-4 py-4"><span className="inline-flex rounded border border-[var(--glass-border)] bg-white/5 px-2 py-1 text-xs text-slate-200">{signal.category === 'crypto' ? 'Crypto' : 'CFD'}</span></td>
               <td className="px-4 py-4"><span className={signal.direction === 'BUY' ? 'font-semibold text-emerald-300' : 'font-semibold text-red-300'}>{signal.direction}</span><div className="mt-1 text-xs text-slate-400">{signal.order_type}</div></td>
               <td className="px-4 py-4 font-mono text-white"><div className="space-y-1">{signal.entries.length ? signal.entries.map((price, index) => <div key={index}>{formatPrice(price)}</div>) : 'Unavailable'}</div></td>
               <td className="px-4 py-4 font-mono text-white">{formatPrice(signal.stop_loss)}</td>

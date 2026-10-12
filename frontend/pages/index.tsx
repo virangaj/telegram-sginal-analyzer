@@ -3,6 +3,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 import { Trash2 } from 'lucide-react';
 import { Layout } from '@/components/Layout';
 import { SignalsList } from '@/components/SignalsList';
@@ -12,6 +13,8 @@ import { SignalManagementDialog, SignalAction, SignalPrices } from '@/components
 import { MarketQuoteStrip } from '@/components/MarketQuoteStrip';
 
 export default function Home() {
+  const router = useRouter();
+  const category = router.query.category === 'crypto' ? 'crypto' : 'cfds';
   const { signals, loading, error, setSignals, setLoading, setError } =
     useAppStore();
   const [action, setAction] = useState<SignalAction | null>(null);
@@ -46,7 +49,7 @@ export default function Home() {
       requestInFlight = true;
       const version = requestVersion.current;
       try {
-        const response = await apiClient.getSignals();
+        const response = await apiClient.getSignals(undefined, 10, category);
         if (version !== requestVersion.current) return;
         setSignals(response.data);
         setError(null);
@@ -65,17 +68,17 @@ export default function Home() {
 
     const interval = setInterval(loadSignals, 1000);
     return () => clearInterval(interval);
-  }, [setSignals, setLoading, setError]);
+  }, [category, setSignals, setLoading, setError]);
 
   return (
-    <Layout title="Signals - Signal Analyzer">
+    <Layout title={`${category === 'crypto' ? 'Crypto' : 'CFDs'} - Signal Analyzer`}>
       <div className="space-y-8">
         <MarketQuoteStrip />
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-          <h2 className="text-3xl font-bold text-white mb-2">Latest Signals</h2>
+          <h2 className="text-3xl font-bold text-white mb-2">{category === 'crypto' ? 'Crypto Signals' : 'CFD Signals'}</h2>
           <p className="text-slate-400">
-            Recent trading signals from configured Telegram channels
+            Recent signals from Telegram channels categorized as {category === 'crypto' ? 'crypto' : 'CFDs'}
           </p>
           </div>
           <button type="button" disabled={loading || signals.length === 0 || action !== null} onClick={() => setAction({ kind: 'deleteAll' })} className="glass-icon-button flex items-center gap-2 px-3 py-2 text-sm !text-red-300 disabled:opacity-40"><Trash2 size={16} />Delete All</button>

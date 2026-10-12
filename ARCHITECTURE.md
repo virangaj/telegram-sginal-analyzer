@@ -13,14 +13,14 @@ observed executable results are different products and must remain separate.
 | Layer | Current Owner | Verified State |
 |---|---|---|
 | Configuration/startup | `backend/app/config.py`, `main.py` | FastAPI; Pydantic settings; local-origin CORS |
-| Ingestion/auth | `backend/app/telegram/listener.py`, `api/routes/telegram_auth.py` | Telethon session; local single-account login; raw-message-first ingestion; asyncio tasks |
-| Channels | `api/routes/channels.py` | Discovery and database-enabled live filtering; local-only management |
-| Parsing | `parsers/base.py`, `registry.py`, `implementations/examples.py` | Text-only plugins; required entries/SL/TP; metadata/revisions need extension |
+| Ingestion/auth | `backend/app/telegram/listener.py`, `api/routes/telegram_auth.py` | Telethon session; local single-account login; selected-channel incoming/outgoing message ingestion; asyncio tasks |
+| Channels | `api/routes/channels.py` | Persisted Crypto/CFDs category, discovery and database-enabled live filtering; local-only management |
+| Parsing | `parsers/base.py`, `registry.py`, `implementations/gold.py` | Text-only validated gold and allowlisted crypto pair formats; metadata/revisions need extension |
 | Persistence | `database/models.py`, `database/base.py` | SQLite default; synchronous SQLAlchemy; create_all and a legacy-status repair |
 | Market data | `market/base.py`, `market/providers/biquote.py`, `api/routes/market.py` | Biquote quote adapter; cached REST snapshots with source/time/freshness; no candle/replay pipeline |
 | Analytics | `analysis/engine.py`, `analysis/regime.py`, `trade/entry_engine.py`, `risk/engine.py` | Standalone helpers and placeholders; no complete wired technical/backtesting pipeline |
 | API | `api/routes/`, `api/schemas.py` | Signals, channels, message types, Telegram auth, market snapshots; inspect OpenAPI before adding clients |
-| Frontend | `frontend/pages`, `components`, `lib` | Next.js Pages Router/React 18, TypeScript, Axios, Zustand, Tailwind, Recharts, Lucide |
+| Frontend | `frontend/pages`, `components`, `lib` | Next.js Pages Router/React 18, TypeScript, Axios, Zustand, Tailwind, Recharts, Lucide; separate Crypto/CFDs signal tabs |
 | Tests/deployment | `backend/tests`, `docker` | Focused channel/database tests; Docker artifacts; no verified frontend test framework or CI |
 
 Alembic is declared but has no configured migration environment or revision source.
@@ -29,9 +29,17 @@ evaluation are future work, not existing guarantees. Pandas/NumPy are not direct
 dependencies. Keep current technologies until a bounded requirement justifies evolution;
 do not introduce Celery, Redis, a new router, or a chart library by default.
 
-Parser selection currently auto-detects before resolving message types. Channel parser
-settings and message-type configuration must not be described as enforced routing without
-implementing and testing that behavior. Some frontend API methods refer to absent routes.
+Stored-message parsing auto-detects only within the source channel category: Crypto uses
+crypto parsers, CFDs uses gold parsers, and unsupported categories cannot fall back to
+another market's parser. Message types are resolved after parsing. Explicit registry parser
+selection also respects a supplied category; channel `parser_type` and message-type
+configuration are not enforced by ingestion. Some frontend API methods refer to absent routes.
+
+Category isolation currently covers parsing and signal-list filtering, not two operational
+technical-analysis pipelines. The analysis modules remain standalone helpers/placeholders;
+startup does not schedule analytics, and `enable_analysis_engine` does not activate one.
+The legacy pip helper assumes CFD/FX units and must not be used for crypto analysis. Separate
+market-context, feed, instrument-unit, and replay policies are required before wiring analytics.
 
 ## Shared Contracts
 

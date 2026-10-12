@@ -46,7 +46,8 @@ class ParserRegistry:
     async def parse_message(
         self,
         message: str,
-        message_type: Optional[SignalMessageType] = None
+        message_type: Optional[SignalMessageType] = None,
+        category: Optional[str] = None,
     ) -> Optional[NormalizedSignal]:
         """
         Parse a message.
@@ -57,6 +58,7 @@ class ParserRegistry:
         Args:
             message: Raw message text
             message_type: Optional SignalMessageType from database
+            category: Restrict parsing to this channel category when supplied
             
         Returns:
             NormalizedSignal if successful, None if parsing failed
@@ -64,7 +66,7 @@ class ParserRegistry:
         if message_type:
             # Use specific parser from message_type
             parser = self.get(message_type.parser_name)
-            if not parser:
+            if not parser or (category is not None and parser.category != category):
                 return None
             result = await parser.parse(message)
             if result:
@@ -72,11 +74,11 @@ class ParserRegistry:
             return result
         else:
             # Auto-detect parser
-            return await self.parse_message_auto(message)
+            return await self.parse_message_auto(message, category=category)
     
-    async def parse_message_auto(self, message: str) -> Optional[NormalizedSignal]:
+    async def parse_message_auto(self, message: str, category: Optional[str] = None) -> Optional[NormalizedSignal]:
         """
-        Attempt to parse a message with all available parsers.
+        Attempt to parse a message with parsers matching the supplied category.
         Useful for auto-detection of signal format.
         
         Args:
@@ -86,6 +88,8 @@ class ParserRegistry:
             NormalizedSignal if any parser succeeds, None if all fail
         """
         for parser in self._parsers.values():
+            if category is not None and parser.category != category:
+                continue
             if parser.can_parse(message):
                 result = await parser.parse(message)
                 if result:
