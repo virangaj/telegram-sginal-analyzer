@@ -50,13 +50,18 @@ class TelegramListener:
             logger.warning("Telegram client is already initialized")
             return
 
-        self.client = TelegramClient(
+        client = TelegramClient(
             settings.telegram_session_name,
             settings.telegram_api_id,
             settings.telegram_api_hash,
         )
-
-        await self.client.connect()
+        self.client = client
+        try:
+            await client.connect()
+        except BaseException:
+            await client.disconnect()
+            self.client = None
+            raise
         self._stopping = False
 
         logger.info("Connected to Telegram")
@@ -220,11 +225,11 @@ class TelegramListener:
             ).all()
             self.enabled_chat_ids = {
                 int(channel.external_channel_id) for channel in channels
-                if not settings.telegram_auto_publish or int(channel.external_channel_id) != settings.telegram_publish_chat_id
+                if not settings.telegram_auto_publish or int(channel.external_channel_id) not in settings.telegram_publish_chat_ids
             }
 
     def accepts_channel(self, chat_id: Optional[int]) -> bool:
-        if settings.telegram_auto_publish and chat_id == settings.telegram_publish_chat_id:
+        if settings.telegram_auto_publish and chat_id in settings.telegram_publish_chat_ids:
             return False
         return chat_id in self.enabled_chat_ids
 
@@ -467,7 +472,7 @@ class MessageProcessor:
         does not wait for parser/database work.
         """
 
-        if settings.telegram_auto_publish and event.chat_id == settings.telegram_publish_chat_id:
+        if settings.telegram_auto_publish and event.chat_id in settings.telegram_publish_chat_ids:
             return
 
         result = await MessageProcessor.store_raw_message(
@@ -542,16 +547,17 @@ class MessageProcessor:
                 session,
             )
 
-            if signal is not None:
-                from app.telegram.publisher import publish_signal
+            message = session.get(Message, message_id)
+            if message is not None:
+                from app.telegram.publisher import publish_raw_message
 
                 try:
-                    await publish_signal(signal, session, get_telegram_listener().client)
+                    await publish_raw_message(message, session, get_telegram_listener().client)
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:
                     session.rollback()
-                    logger.warning("Telegram publication failed for signal %s (%s)", signal.id, type(error).__name__)
+                    logger.warning("Telegram publication failed for message %s (%s)", message_id, type(error).__name__)
 
             logger.debug(
                 "Finished parser for message %s",

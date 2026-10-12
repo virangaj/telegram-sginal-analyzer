@@ -178,16 +178,32 @@ Account and channel management endpoints reject non-local clients and origins.
 Keep the Telegram session file private; it grants access to the connected account.
 Login codes and passwords are not stored in the application database.
 
+Each channel is assigned a `crypto` or `cfds` category when enabled. Existing channels
+are migrated to `cfds` without changing their enabled state; choose Crypto or CFDs in the
+category prompt when enabling a channel. Parsed signals inherit the source channel category.
+The dashboard has separate Crypto and CFDs tabs and filters signals by that stored source
+category. Crypto parsing currently recognizes an explicit allowlist of common USD, USDT,
+and USDC pairs; unknown tickers and ambiguous/incomplete messages remain unparsed.
+Ingestion uses only parsers matching the source channel category: Crypto messages do not
+fall back to gold parsing, and CFDs messages do not fall back to crypto parsing. Opposite-market
+messages remain stored without a finalized signal. Existing signals are not changed by this rule.
+
+Separate technical-analysis pipelines are not implemented yet. The current analysis modules
+are standalone helpers/placeholders, not an automatically running Crypto or CFDs analysis
+service. `ENABLE_ANALYSIS_ENGINE` alone does not start analysis. CFD/FX pip assumptions must
+not be applied to crypto; market-specific feeds, units, and evaluation policies are still needed.
+
 ### Database
 
 SQLite is used for development. On first run, migrations will initialize the schema.
 
 ### Automatic Telegram Publication
 
-New successfully parsed signals are automatically sent to **Signal for you**
-(`-1004302136634`, `https://t.me/signal_for_you_v1`) using the connected Telegram account.
-That account must be a member with permission to post. Publication formats the existing
-signal; it does not generate missing levels, evaluate profitability, or execute trades.
+Recognizable forex/CFD and crypto signal messages are automatically forwarded as their
+original raw text using the connected Telegram account, including incomplete crypto messages
+marked REVIEW. CFDs/forex messages go to the forex destination; crypto messages go to the
+crypto destination. The account must be a member with permission to post in both groups.
+Raw forwarding does not infer missing levels, evaluate profitability, or execute trades.
 
 ```text
 GOLD
@@ -209,8 +225,12 @@ Configuration defaults to the approved destination; disable sending when needed:
 
 ```dotenv
 TELEGRAM_AUTO_PUBLISH=true
-TELEGRAM_PUBLISH_CHAT_ID=-1004302136634
+TELEGRAM_PUBLISH_FOREX_CHAT_ID=-1004302136634
+TELEGRAM_PUBLISH_CRYPTO_CHAT_ID=-5349907572
 ```
+
+`TELEGRAM_PUBLISH_CHAT_ID` remains a backward-compatible alias for the forex destination.
+Messages from either destination are excluded from ingestion to prevent feedback loops.
 
 The additive `telegram_publications` ledger records each account/source-message/destination
 combination and a Telegram random ID before sending. Duplicate attempts are suppressed,
@@ -319,6 +339,22 @@ Labeled `Entry:` values and explicit MARKET/LIMIT/STOP orders are also supported
 Missing levels, conflicting directions, wrong-side prices, follow-up/result messages, and
 entry ranges such as `2000-2010` remain unparsed for review rather than being guessed.
 Legacy configured parser names resolve to the same validated gold parser.
+
+Crypto channels additionally recognize LONG/SHORT as BUY/SELL, markdown/Unicode-bold
+labels, emoji prefixes, and absolute entry/target/SL prices on the same or next line.
+Labeled price sections also accept multiline lists, including `1) 120` and `1. 120`,
+preserving every supplied price in source order without treating list numbers as prices.
+For example, `BTC/USDT`, `FUTURE (SHORT)`, `Enter Price: 85500`,
+`Target: 77000 (+100%)`, and `SL: 94000 (-100%)` produce a SELL signal using the explicit
+85500/77000/94000 prices, not the annotated percentages. BTW, PNUT, and CHIP are included
+in the recognized ticker set; the quote currency must still be explicitly supplied.
+
+Recognized but incomplete crypto messages are preserved with parsing status REVIEW and
+a specific reason. Percentage-only targets (including leveraged-return ambiguity), entry
+ranges, unspecified current-market entries, and missing quote currencies/SL/TP are not
+converted into invented levels. REVIEW messages do not appear in the finalized-signal table;
+recognizable source messages are forwarded verbatim to the configured crypto destination.
+Original text, leverage notes, and all supplied values remain in the raw message for review.
 
 All signals are normalized to:
 

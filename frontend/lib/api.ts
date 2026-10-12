@@ -24,10 +24,14 @@ class ApiClient {
   }
 
   // Signals
-  async getSignals(symbol?: string, limit: number = 10) {
+  async getSignals(symbol?: string, limit: number = 10, category: 'crypto' | 'cfds' = 'cfds') {
     return this.client.get('/api/signals', {
-      params: { symbol, limit },
+      params: { symbol, limit, category },
     });
+  }
+
+  async getReviewMessages(category: 'crypto' | 'cfds', limit: number = 50) {
+    return this.client.get('/api/messages/review', { params: { category, limit } });
   }
 
   async getSignal(id: number) {
@@ -78,7 +82,7 @@ class ApiClient {
 
   async updateChannel(
     id: number,
-    data: { channel_name?: string; parser_type?: string; enabled?: boolean }
+    data: { channel_name?: string; parser_type?: string; enabled?: boolean; category?: 'crypto' | 'cfds' }
   ) {
     return this.client.post(`/api/channels/${id}`, data);
   }

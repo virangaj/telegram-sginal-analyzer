@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Check, Loader2, LogOut, Radio, RefreshCw, Search, Send } from 'lucide-react';
+import { Check, Loader2, LogOut, Pencil, Radio, RefreshCw, Search, Send } from 'lucide-react';
 import { Layout } from '@/components/Layout';
 import { apiClient } from '@/lib/api';
 import { Channel, TelegramStatus } from '@/lib/types';
@@ -25,6 +25,9 @@ export default function ChannelsPage() {
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [step, setStep] = useState<'phone' | 'code' | 'password'>('phone');
+  const [channelToEnable, setChannelToEnable] = useState<Channel | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<'crypto' | 'cfds'>('cfds');
+  const [categoryOnly, setCategoryOnly] = useState(false);
 
   async function load(sync: boolean) {
     const connection = await apiClient.getTelegramStatus();
@@ -105,17 +108,57 @@ export default function ChannelsPage() {
     }
   }
 
-  async function toggle(channel: Channel) {
+  async function saveChannelSelection(channel: Channel, enabled: boolean, category?: 'crypto' | 'cfds'): Promise<boolean> {
     setSaving((current) => [...current, channel.id]);
     setError(null);
     setNotice('');
     try {
-      const response = await apiClient.updateChannel(channel.id, { enabled: !channel.enabled });
+      const response = await apiClient.updateChannel(channel.id, { enabled, ...(category ? { category } : {}) });
       setChannels((current) => current.map((item) => item.id === channel.id ? response.data : item));
       setStatus((await apiClient.getTelegramStatus()).data);
-      setNotice(`${channel.channel_name}: ${response.data.enabled ? 'selected' : 'deselected'}`);
+      setNotice(`${channel.channel_name}: ${response.data.enabled ? `selected for ${response.data.category === 'crypto' ? 'Crypto' : 'CFDs'}` : 'deselected'}`);
+      return true;
     } catch (failure) {
       setError(errorMessage(failure));
+      return false;
+    } finally {
+      setSaving((current) => current.filter((id) => id !== channel.id));
+    }
+  }
+
+  function toggle(channel: Channel) {
+    if (channel.enabled) {
+      void saveChannelSelection(channel, false);
+      return;
+    }
+    setCategoryOnly(false);
+    setSelectedCategory(channel.category || 'cfds');
+    setChannelToEnable(channel);
+  }
+
+  async function confirmChannelSelection() {
+    if (!channelToEnable) return;
+    const channel = channelToEnable;
+    const saved = categoryOnly
+      ? await saveChannelCategory(channel, selectedCategory)
+      : await saveChannelSelection(channel, true, selectedCategory);
+    if (saved) {
+      setChannelToEnable(null);
+    }
+  }
+
+  async function saveChannelCategory(channel: Channel, category: 'crypto' | 'cfds'): Promise<boolean> {
+    setSaving((current) => [...current, channel.id]);
+    setError(null);
+    setNotice('');
+    try {
+      const response = await apiClient.updateChannel(channel.id, { category });
+      setChannels((current) => current.map((item) => item.id === channel.id ? response.data : item));
+      setNotice(`${channel.channel_name}: category changed to ${category === 'crypto' ? 'Crypto' : 'CFDs'}`);
+      return true;
+    } catch (failure) {
+      setError(errorMessage(failure));
+      return false;
     } finally {
       setSaving((current) => current.filter((id) => id !== channel.id));
     }
@@ -186,19 +229,29 @@ export default function ChannelsPage() {
             : filtered.length === 0 ? <div className="py-8 text-sm text-slate-400">{search ? 'No matching channels' : 'No channels available'}</div>
               : <ul className="space-y-2">
                 {filtered.map((channel) => <li key={channel.id} className="glass-surface channel-row" data-selected={channel.enabled}>
-                  <label className="flex min-h-20 cursor-pointer items-center gap-3 px-4 py-4 sm:gap-4">
-                    <input type="checkbox" checked={channel.enabled} disabled={saving.includes(channel.id) || busy} onChange={() => toggle(channel)} aria-label={`Listen to ${channel.channel_name}`} className="h-5 w-5 shrink-0 accent-sky-400" />
-                    <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-400/15 text-sky-300 sm:flex"><Radio size={19} aria-hidden="true" /></span>
-                    <div className="min-w-0 flex-1"><div className="break-words font-medium text-white">{channel.channel_name}</div><div className="mt-1 break-all text-xs text-slate-500">{channel.external_channel_id}</div></div>
+                  <div className="flex min-h-20 items-center gap-3 px-4 py-4 sm:gap-4">
+                    <label className="flex shrink-0 cursor-pointer items-center gap-3" aria-label={`Listen to ${channel.channel_name}`}>
+                      <input type="checkbox" checked={channel.enabled} disabled={saving.includes(channel.id) || busy} onChange={() => toggle(channel)} aria-label={`Listen to ${channel.channel_name}`} className="h-5 w-5 shrink-0 accent-sky-400" />
+                      <span className="hidden h-10 w-10 items-center justify-center rounded-lg bg-blue-400/15 text-sky-300 sm:flex"><Radio size={19} aria-hidden="true" /></span>
+                    </label>
+                    <div className="min-w-0 flex-1"><div className="break-words font-medium text-white">{channel.channel_name}</div><div className="mt-1 break-all text-xs text-slate-500">{channel.external_channel_id}</div><span className="mt-2 inline-flex rounded border border-[var(--glass-border)] bg-white/5 px-2 py-0.5 text-xs text-slate-300">{channel.category === 'crypto' ? 'Crypto' : 'CFDs'}</span></div>
+                    <button type="button" disabled={busy || saving.includes(channel.id)} onClick={() => { setCategoryOnly(true); setSelectedCategory(channel.category); setChannelToEnable(channel); }} className="glass-icon-button flex h-9 shrink-0 items-center gap-2 px-2 text-xs disabled:opacity-40 sm:px-3"><Pencil size={14} /><span className="hidden sm:inline">Change type</span></button>
                     <span className="flex shrink-0 items-center gap-2 text-xs text-slate-400">
                       {saving.includes(channel.id) ? <Loader2 size={16} className="animate-spin" /> : channel.enabled ? <Check size={16} className="text-emerald-400" /> : null}
                       {saving.includes(channel.id) ? 'Saving' : channel.enabled ? (status?.listening ? 'Listening' : 'Selected') : 'Off'}
                     </span>
-                  </label>
+                  </div>
                 </li>)}
               </ul>}
         </section>
       </div>
+      {channelToEnable && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setChannelToEnable(null); }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="channel-category-title" className="theme-dialog w-full max-w-md space-y-5 rounded-lg border p-5 shadow-2xl">
+          <div><h3 id="channel-category-title" className="text-lg font-semibold text-white">{categoryOnly ? 'Change channel type' : 'Categorize channel'}</h3><p className="mt-1 break-words text-sm text-slate-400">{channelToEnable.channel_name}</p></div>
+          <fieldset className="space-y-2"><legend className="mb-2 text-sm text-slate-300">Listen to this channel under</legend>{(['crypto', 'cfds'] as const).map((categoryOption) => <label key={categoryOption} className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 ${selectedCategory === categoryOption ? 'border-[var(--glass-accent)] bg-[var(--glass-hover)]' : 'border-[var(--glass-border)]'}`}><input type="radio" name="channel-category" value={categoryOption} checked={selectedCategory === categoryOption} onChange={() => setSelectedCategory(categoryOption)} className="accent-[var(--glass-accent)]" /><span className="text-sm text-white">{categoryOption === 'crypto' ? 'Crypto' : 'CFDs'}</span></label>)}</fieldset>
+          <div className="flex justify-end gap-3 border-t border-[var(--glass-border)] pt-4"><button type="button" onClick={() => setChannelToEnable(null)} className="glass-icon-button px-4 py-2 text-sm">Cancel</button><button type="button" onClick={confirmChannelSelection} disabled={saving.includes(channelToEnable.id)} className="glass-primary-button rounded-md px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving.includes(channelToEnable.id) ? 'Saving' : categoryOnly ? 'Save type' : 'Save and Listen'}</button></div>
+        </section>
+      </div>}
     </Layout>
   );
 }

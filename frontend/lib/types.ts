@@ -19,7 +19,18 @@ export interface Signal {
   updated_at: string;
   channel_id: number;
   channel_name?: string | null;
+  category: 'crypto' | 'cfds';
   message_type_id?: number;
+}
+
+export interface ReviewMessage {
+  id: number;
+  channel_id: number;
+  channel_name: string;
+  category: 'crypto' | 'cfds';
+  raw_text: string;
+  parse_error: string | null;
+  received_at: string;
 }
 
 export interface Channel {
@@ -27,6 +38,7 @@ export interface Channel {
   platform: string;
   external_channel_id: string;
   channel_name: string;
+  category: 'crypto' | 'cfds';
   username?: string;
   channel_type?: string;
   enabled: boolean;

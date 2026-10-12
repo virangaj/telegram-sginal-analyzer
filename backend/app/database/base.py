@@ -20,13 +20,25 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+def ensure_channel_category_column() -> None:
+    """Add channel categories to existing databases without changing channel selection."""
+    with engine.begin() as connection:
+        channel_columns = {column["name"] for column in inspect(connection).get_columns("channels")}
+        if "category" not in channel_columns:
+            connection.execute(text("ALTER TABLE channels ADD COLUMN category VARCHAR NOT NULL DEFAULT 'cfds'"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_channels_category ON channels (category)"))
+
+
 def init_db():
     """Initialize database - create all tables"""
     Base.metadata.create_all(bind=engine)
+    ensure_channel_category_column()
     with engine.begin() as connection:
-        columns = {column["name"] for column in inspect(connection).get_columns("telegram_publications")}
-        if "destination_message_id" not in columns:
-            connection.execute(text("ALTER TABLE telegram_publications ADD COLUMN destination_message_id INTEGER"))
+        publication_tables = set(inspect(connection).get_table_names())
+        if "telegram_publications" in publication_tables:
+            columns = {column["name"] for column in inspect(connection).get_columns("telegram_publications")}
+            if "destination_message_id" not in columns:
+                connection.execute(text("ALTER TABLE telegram_publications ADD COLUMN destination_message_id INTEGER"))
         connection.execute(
             text("UPDATE signals SET status = :pending WHERE status = :legacy_status"),
             {"pending": SignalStatus.PENDING.name, "legacy_status": "SUCCESS"},

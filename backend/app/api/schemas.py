@@ -82,6 +82,16 @@ class MessageSchema(BaseModel):
         from_attributes = True
 
 
+class ReviewMessageSchema(BaseModel):
+    id: int
+    channel_id: int
+    channel_name: str
+    category: Literal["crypto", "cfds"]
+    raw_text: str
+    parse_error: Optional[str]
+    received_at: datetime
+
+
 class ChannelSchema(BaseModel):
     """Schema for Telegram channels"""
     
@@ -90,6 +100,7 @@ class ChannelSchema(BaseModel):
     external_channel_id: str
     channel_name: str
     enabled: bool
+    category: Literal["crypto", "cfds"] = "cfds"
     parser_type: Optional[str]
     created_at: datetime
     updated_at: datetime
@@ -105,6 +116,7 @@ class SignalSchema(BaseModel):
     message_id: int
     channel_id: int
     channel_name: Optional[str] = None
+    category: Literal["crypto", "cfds"] = "cfds"
     message_type_id: Optional[int]
     symbol: str
     direction: str
@@ -130,6 +142,7 @@ def signal_to_schema(signal) -> "SignalSchema":
         message_id=signal.message_id,
         channel_id=signal.channel_id,
         channel_name=signal.channel.channel_name if signal.channel else None,
+        category=signal.channel.category if signal.channel else "cfds",
         message_type_id=signal.message_type_id,
         symbol=signal.symbol,
         direction=signal.direction,
