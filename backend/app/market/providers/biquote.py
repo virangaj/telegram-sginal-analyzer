@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.market.base import MarketDataProvider, OHLC
 
@@ -50,6 +50,66 @@ class MarketSnapshot(BaseModel):
     error: Optional[str] = None
 
 
+class BiquoteSymbol(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: str
+    description: Optional[str] = None
+    type: Optional[str] = None
+    exchange: Optional[str] = None
+    source: Optional[str] = None
+    digits: Optional[int] = None
+    is_active: Optional[bool] = Field(default=None, validation_alias="isActive")
+    has_data: Optional[bool] = Field(default=None, validation_alias="hasData")
+
+
+class BiquoteCalendarEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
+
+    id: Optional[str] = None
+    event_id: Optional[str] = Field(default=None, validation_alias="eventId")
+    time: datetime
+    period: Optional[str] = None
+    country_code: Optional[str] = Field(default=None, validation_alias="countryCode")
+    currency: Optional[str] = None
+    name: Optional[str] = None
+    importance: Optional[str] = None
+    event_type: Optional[str] = Field(default=None, validation_alias="type")
+    sector: Optional[str] = None
+    unit: Optional[str] = None
+    multiplier: Optional[str] = None
+    digits: Optional[int] = None
+    actual: Optional[float] = None
+    forecast: Optional[float] = None
+    previous: Optional[float] = None
+    revised_previous: Optional[float] = Field(default=None, validation_alias="revisedPrevious")
+    revision: Optional[int] = None
+    time_mode: Optional[str] = Field(default=None, validation_alias="timeMode")
+    source_url: Optional[str] = Field(default=None, validation_alias="sourceUrl")
+    source: Optional[str] = None
+
+    @field_validator("actual", "forecast", "previous", "revised_previous", mode="before")
+    @classmethod
+    def empty_value_is_missing(cls, value):
+        return None if value in ("", "-", "—") else value
+
+    @field_validator("time")
+    @classmethod
+    def event_time_must_have_timezone(cls, value):
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("Calendar event time must include a timezone")
+        return value
+
+
+class BiquoteCalendarSnapshot(BaseModel):
+    provider: str = "Biquote"
+    source: str = "Biquote Economic Calendar"
+    requested_from: datetime
+    requested_to: datetime
+    fetched_at: datetime
+    events: list[BiquoteCalendarEvent]
+
+
 class BiquoteMarketDataProvider(MarketDataProvider):
     def __init__(self, base_url="https://biquote.io", poll_interval=1, stale_after=300, client=None):
         super().__init__("biquote")
@@ -62,6 +122,70 @@ class BiquoteMarketDataProvider(MarketDataProvider):
         self._errors: dict[str, str] = {}
         self._lock = asyncio.Lock()
         self._retry_at = 0.0
+        self._calendar_lock = asyncio.Lock()
+        self._calendar_cache_key = None
+        self._calendar_cache_events: list[BiquoteCalendarEvent] = []
+        self._calendar_cache_fetched_at: Optional[datetime] = None
+        self._calendar_cache_expires_at = 0.0
+
+    async def get_calendar_events(
+        self,
+        from_time: datetime,
+        to_time: datetime,
+        countries: Optional[str] = None,
+        importance: Optional[str] = None,
+        event_type: Optional[str] = None,
+        limit: int = 200,
+    ) -> BiquoteCalendarSnapshot:
+        from_utc = from_time.astimezone(timezone.utc)
+        to_utc = to_time.astimezone(timezone.utc)
+        cache_key = (from_utc, to_utc, countries, importance, event_type, limit)
+        async with self._calendar_lock:
+            now = time.monotonic()
+            if cache_key == self._calendar_cache_key and now < self._calendar_cache_expires_at:
+                events = self._calendar_cache_events
+                fetched_at = self._calendar_cache_fetched_at
+            else:
+                params = {
+                    "from": from_utc.isoformat(),
+                    "to": to_utc.isoformat(),
+                    "limit": limit,
+                }
+                if countries:
+                    params["countries"] = countries
+                if importance:
+                    params["importance"] = importance
+                if event_type:
+                    params["type"] = event_type
+                response = await self.client.get("/api/Calendar", params=params)
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, list):
+                    raise ValueError("Calendar response must be a list")
+                events = [BiquoteCalendarEvent.model_validate(item) for item in payload]
+                events = sorted(
+                    (event for event in events if from_utc <= event.time.astimezone(timezone.utc) < to_utc),
+                    key=lambda event: event.time,
+                )
+                fetched_at = datetime.now(timezone.utc)
+                self._calendar_cache_key = cache_key
+                self._calendar_cache_events = events
+                self._calendar_cache_fetched_at = fetched_at
+                self._calendar_cache_expires_at = now + 60
+        return BiquoteCalendarSnapshot(
+            requested_from=from_utc,
+            requested_to=to_utc,
+            fetched_at=fetched_at,
+            events=events,
+        )
+
+    async def search_symbols(self, query: str, limit: int = 25) -> list[BiquoteSymbol]:
+        response = await self.client.get("/api/Symbols/search", params={"q": query, "limit": limit})
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Symbol search response must be a list")
+        return [BiquoteSymbol.model_validate(item) for item in payload]
 
     async def get_snapshot(self, symbol: str) -> MarketSnapshot:
         async with self._lock:

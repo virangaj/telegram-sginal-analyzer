@@ -23,6 +23,47 @@ export interface Signal {
   message_type_id?: number;
 }
 
+export interface MarketSymbol {
+  name: string;
+  description: string | null;
+  type: string | null;
+  exchange: string | null;
+  source: string | null;
+  digits: number | null;
+  is_active: boolean | null;
+  has_data: boolean | null;
+}
+
+export interface EconomicCalendarEvent {
+  id: string | null;
+  event_id: string | null;
+  time: string;
+  period: string | null;
+  country_code: string | null;
+  currency: string | null;
+  name: string | null;
+  importance: string | null;
+  event_type: string | null;
+  unit: string | null;
+  digits: number | null;
+  actual: number | null;
+  forecast: number | null;
+  previous: number | null;
+  revised_previous: number | null;
+  time_mode: string | null;
+  source_url: string | null;
+  source: string | null;
+}
+
+export interface EconomicCalendarResponse {
+  provider: string;
+  source: string;
+  requested_from: string;
+  requested_to: string;
+  fetched_at: string;
+  events: EconomicCalendarEvent[];
+}
+
 export interface Channel {
   id: number;
   platform: string;

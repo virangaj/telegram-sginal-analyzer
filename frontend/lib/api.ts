@@ -3,6 +3,7 @@
  */
 
 import axios, { AxiosInstance } from 'axios';
+import { EconomicCalendarResponse, MarketSymbol } from './types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -61,6 +62,23 @@ class ApiClient {
   // Market data
   async getMarketSnapshot(symbol: string) {
     return this.client.get(`/api/market/${symbol}`);
+  }
+
+  async searchMarketSymbols(query: string, category: 'crypto' | 'cfds', limit: number = 10) {
+    return this.client.get<MarketSymbol[]>('/api/market/symbols/search', {
+      params: { q: query, category, limit },
+    });
+  }
+
+  async getEconomicCalendar(params: {
+    from: string;
+    to: string;
+    countries?: string;
+    importance?: 'low' | 'medium' | 'high';
+    type?: 'event' | 'indicator' | 'holiday';
+    limit?: number;
+  }) {
+    return this.client.get<EconomicCalendarResponse>('/api/market/calendar', { params });
   }
 
   // Channels

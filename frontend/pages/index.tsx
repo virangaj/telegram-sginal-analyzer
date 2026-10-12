@@ -75,27 +75,31 @@ export default function Home() {
 
   return (
     <Layout title={`${category === 'crypto' ? 'Crypto' : 'CFDs'} - Signal Analyzer`}>
-      <div className="space-y-8">
-        <MarketQuoteStrip />
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-          <h2 className="text-3xl font-bold text-white mb-2">{category === 'crypto' ? 'Crypto Signals' : 'CFD Signals'}</h2>
-          <p className="text-slate-400">
-            Recent signals from Telegram channels categorized as {category === 'crypto' ? 'crypto' : 'CFDs'}
-          </p>
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(280px,320px)_minmax(0,1fr)] lg:items-start">
+        <aside className="min-w-0 lg:sticky lg:top-4">
+          <MarketQuoteStrip category={category} signals={signals} key={category} />
+        </aside>
+        <div className="min-w-0 space-y-8">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-3xl font-bold text-white mb-2">{category === 'crypto' ? 'Crypto Signals' : 'CFD Signals'}</h2>
+              <p className="text-slate-400">
+                Recent signals from Telegram channels categorized as {category === 'crypto' ? 'crypto' : 'CFDs'}
+              </p>
+            </div>
+            <button type="button" disabled={loading || signals.length === 0 || action !== null} onClick={() => setAction({ kind: 'deleteAll' })} className="glass-icon-button flex items-center gap-2 px-3 py-2 text-sm !text-red-300 disabled:opacity-40"><Trash2 size={16} />Delete All</button>
           </div>
-          <button type="button" disabled={loading || signals.length === 0 || action !== null} onClick={() => setAction({ kind: 'deleteAll' })} className="glass-icon-button flex items-center gap-2 px-3 py-2 text-sm !text-red-300 disabled:opacity-40"><Trash2 size={16} />Delete All</button>
-        </div>
-        <div role="status" aria-live="polite" className="min-h-5 text-sm text-emerald-300">{notice}</div>
+          <div role="status" aria-live="polite" className="min-h-5 text-sm text-emerald-300">{notice}</div>
 
-        <SignalsList
-          signals={signals}
-          isLoading={loading}
-          error={error}
-          onEditSignal={(signal) => setAction({ kind: 'edit', signal })}
-          onDeleteSignal={(signal) => setAction({ kind: 'delete', signal })}
-          onSendSignal={(signal) => setAction({ kind: 'send', signal })}
-        />
+          <SignalsList
+            signals={signals}
+            isLoading={loading}
+            error={error}
+            onEditSignal={(signal) => setAction({ kind: 'edit', signal })}
+            onDeleteSignal={(signal) => setAction({ kind: 'delete', signal })}
+            onSendSignal={(signal) => setAction({ kind: 'send', signal })}
+          />
+        </div>
       </div>
       {action && <SignalManagementDialog action={action} onClose={() => setAction(null)} onSave={saveSignal} onDelete={deleteSignals} onSend={sendSignal} />}
     </Layout>

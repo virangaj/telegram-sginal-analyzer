@@ -286,12 +286,14 @@ or signal-linked historical analysis. Back up the database before running it.
 
 ### Biquote Market Quotes
 
-The dashboard displays XAU/USD bid, ask, and midpoint quotes from
-[Biquote](https://biquote.io/guides/free-forex-api-python.html) using the anonymous REST
-batch endpoint. No API key or additional dependency is required. The browser requests
-`GET /api/market/XAUUSD` every second; a shared backend cache limits upstream refreshes.
-The displayed provider/broker source, quote timestamp, age, and market-state label come
-from validated provider data. A closed/stale quote is shown as a last quote, not live.
+The dashboard receives current ticks directly from Biquote's anonymous SignalR hub at
+`/hubs/tick`; it does not poll the REST quote endpoint. CFDs and Crypto have separate
+browser-local watchlists. Users can search provider symbols, and symbols from finalized
+signals are automatically added once per signal. CFD search includes Forex, CFD, and
+Commodity instruments; Crypto search includes Crypto instruments. Quotes show bid, ask,
+midpoint, provider source, and provider tick time in the browser's local timezone. The
+watchlist reconnects and resubscribes automatically; while disconnected, quotes are
+unavailable rather than silently replaced with REST snapshots.
 
 Optional backend environment settings:
 
@@ -303,13 +305,19 @@ BIQUOTE_SYMBOLS=XAUUSD,XAGUSD,EURUSD,GBPUSD,USDJPY
 ```
 
 These provider-specific settings are independent of the older `MARKET_DATA_*` placeholders.
-`GET /api/market/{symbol}` supports configured symbols and returns explicit unavailable,
-unknown, stale, closed, or live status. Rate limits/outages cause bounded backoff; failures
-preserve the last source timestamp and never make stale data appear fresh.
-This integration supplies quotes only: it does not persist candles, implement historical
-replay, subscribe to SignalR, generate trading signals, or place orders. The provider's
-OHLC documentation describes mixed upstream sources; historical integration needs explicit
-per-series provenance and coverage before those bars can be used as replay evidence.
+The backend also exposes `GET /api/market/symbols/search` as a category-filtered Biquote
+symbol catalog for the watchlist picker. `GET /api/market/{symbol}` remains available for
+other clients, but the dashboard's live watchlist does not use it. The integration does not
+persist candles, implement historical replay, generate trading signals, or place orders.
+The provider's OHLC documentation describes mixed upstream sources; historical integration
+needs explicit per-series provenance and coverage before those bars can be used as replay
+evidence.
+
+The separate `/calendar` page reads scheduled macro releases from Biquote's REST economic
+calendar through `GET /api/market/calendar`. It supports UTC date ranges up to 31 days,
+country, minimum-impact, and event-type filters, and shows release times in the browser's
+local timezone. Calendar responses retain Biquote source, fetch time, and event timestamps;
+they are display context, not validated historical market evidence for signal backtests.
 
 See `.env.example` for required environment variables:
 - Telegram API credentials
