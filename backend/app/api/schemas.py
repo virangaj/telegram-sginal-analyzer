@@ -82,6 +82,16 @@ class MessageSchema(BaseModel):
         from_attributes = True
 
 
+class ReviewMessageSchema(BaseModel):
+    id: int
+    channel_id: int
+    channel_name: str
+    category: Literal["crypto", "cfds"]
+    raw_text: str
+    parse_error: Optional[str]
+    received_at: datetime
+
+
 class ChannelSchema(BaseModel):
     """Schema for Telegram channels"""
     

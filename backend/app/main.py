@@ -14,7 +14,7 @@ from app.telegram.listener import get_telegram_listener, MessageProcessor
 from app.parsers.implementations import init_parsers
 
 # Import API routes
-from app.api.routes import signals, channels, message_types, telegram_auth, market
+from app.api.routes import signals, channels, message_types, telegram_auth, market, messages
 
 # Configure logging
 logging.basicConfig(level=settings.log_level)
@@ -95,6 +95,7 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(signals.router)
+app.include_router(messages.router)
 app.include_router(channels.router)
 app.include_router(message_types.router)
 app.include_router(telegram_auth.router)

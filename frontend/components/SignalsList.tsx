@@ -70,8 +70,8 @@ export const SignalsList: React.FC<SignalsListProps> = ({
 
   if (signals.length === 0) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-slate-400">No signals yet</div>
+      <div className="flex justify-center items-center py-8">
+        <div className="text-slate-400">No finalized signals yet</div>
       </div>
     );
   }

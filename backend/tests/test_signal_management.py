@@ -9,10 +9,10 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.routes import signals
+from app.api.routes import messages, signals
 from app.database import base
 from app.database.models import (
-    Base, Channel, Message, Signal, SignalEntry, SignalTakeProfit, MarketCandle,
+    Base, Channel, Message, ParseStatus, Signal, SignalEntry, SignalTakeProfit, MarketCandle,
     Analysis, AnalysisRun, MarketAnalysis, TradeSetup, TradeSetupEntry, TradeSetupTarget, Trade,
 )
 from app.services.signal_service import SignalService
@@ -244,3 +244,45 @@ def test_partial_crypto_message_is_stored_for_review_without_signal(database):
     assert "Entry range" in message.parse_error
     assert message.raw_text == text
     assert database.query(Signal).filter_by(message_id=message.id).count() == 0
+
+
+def test_review_messages_api_filters_by_category_and_is_local_only(database):
+    review = Message(
+        channel_id=database.query(Channel).first().id,
+        external_message_id="crypto-review",
+        raw_text="XRP/USDT SHORT\\nEntry range pending review",
+        parse_status=ParseStatus.REVIEW,
+        parse_error="Entry range needs review",
+        received_at=datetime(2026, 1, 2),
+    )
+    database.add(review)
+    database.flush()
+    review.channel.category = "crypto"
+    database.commit()
+    from app.database.base import get_db
+
+    app = FastAPI()
+    app.include_router(messages.router)
+    app.dependency_overrides[get_db] = lambda: database
+
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
+            response = await client.get("/api/messages/review", params={"category": "crypto"})
+            assert response.status_code == 200
+            assert response.json() == [{
+                "id": review.id,
+                "channel_id": review.channel_id,
+                "channel_name": review.channel.channel_name,
+                "category": "crypto",
+                "raw_text": review.raw_text,
+                "parse_error": "Entry range needs review",
+                "received_at": "2026-01-02T00:00:00",
+            }]
+            denied = await client.get(
+                "/api/messages/review",
+                params={"category": "crypto"},
+                headers={"Origin": "https://untrusted.example"},
+            )
+            assert denied.status_code == 403
+
+    asyncio.run(check())
