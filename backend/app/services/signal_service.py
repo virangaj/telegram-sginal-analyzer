@@ -138,12 +138,21 @@ class SignalService:
                 # Parsing failed - mark message and return
                 message.parse_status = ParseStatus.FAILED
                 message.parse_error = f"No {message.channel.category} parser could handle this message"
-                from app.parsers.implementations.gold import CryptoSignalParser
+                from app.parsers.implementations.gold import CryptoSignalParser, GoldSignalParser
 
-                crypto_parser = CryptoSignalParser()
-                if message.channel.category == "crypto" and crypto_parser.can_parse(message_text):
+                review_parser = (
+                    CryptoSignalParser() if message.channel.category == "crypto"
+                    else GoldSignalParser() if message.channel.category == "cfds"
+                    else None
+                )
+                review_reason = (
+                    review_parser.review_reason(message_text)
+                    if review_parser and review_parser.can_parse(message_text)
+                    else None
+                )
+                if review_reason:
                     message.parse_status = ParseStatus.REVIEW
-                    message.parse_error = crypto_parser.review_reason(message_text)
+                    message.parse_error = review_reason
                 message.processed_at = datetime.utcnow()
                 db.commit()
                 logger.warning("Could not parse message %s", message_id)

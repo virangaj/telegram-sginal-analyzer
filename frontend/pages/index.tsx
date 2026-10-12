@@ -11,7 +11,6 @@ import { useAppStore } from '@/lib/store';
 import { apiClient } from '@/lib/api';
 import { SignalManagementDialog, SignalAction, SignalPrices } from '@/components/SignalManagementDialog';
 import { MarketQuoteStrip } from '@/components/MarketQuoteStrip';
-import { ReviewMessage } from '@/lib/types';
 
 export default function Home() {
   const router = useRouter();
@@ -20,8 +19,6 @@ export default function Home() {
     useAppStore();
   const [action, setAction] = useState<SignalAction | null>(null);
   const [notice, setNotice] = useState('');
-  const [reviewMessages, setReviewMessages] = useState<ReviewMessage[]>([]);
-  const [reviewError, setReviewError] = useState<string | null>(null);
   const pollPaused = useRef(false);
   const requestVersion = useRef(0);
   pollPaused.current = action !== null;
@@ -52,25 +49,10 @@ export default function Home() {
       requestInFlight = true;
       const version = requestVersion.current;
       try {
-        const [signalResult, reviewResult] = await Promise.allSettled([
-          apiClient.getSignals(undefined, 10, category),
-          apiClient.getReviewMessages(category),
-        ]);
+        const response = await apiClient.getSignals(undefined, 10, category);
         if (version !== requestVersion.current) return;
-        if (signalResult.status === 'fulfilled') {
-          setSignals(signalResult.value.data);
-          setError(null);
-        } else {
-          setError('Failed to load signals');
-          console.error(signalResult.reason);
-        }
-        if (reviewResult.status === 'fulfilled') {
-          setReviewMessages(reviewResult.value.data);
-          setReviewError(null);
-        } else {
-          setReviewError('Failed to load messages for review');
-          console.error(reviewResult.reason);
-        }
+        setSignals(response.data);
+        setError(null);
       } catch (err) {
         if (version !== requestVersion.current) return;
         setError('Failed to load signals');
@@ -106,29 +88,6 @@ export default function Home() {
         </div>
         <div role="status" aria-live="polite" className="min-h-5 text-sm text-emerald-300">{notice}</div>
 
-        {(reviewMessages.length > 0 || reviewError) && (
-          <section aria-labelledby="review-messages-title" className="theme-band border-y py-5">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h3 id="review-messages-title" className="text-lg font-semibold text-white">Messages needing review</h3>
-              <span className="rounded border border-amber-300/30 bg-amber-400/10 px-2 py-1 text-xs text-amber-200">{reviewMessages.length}</span>
-            </div>
-            {reviewError && <p role="alert" className="mb-3 text-sm text-red-300">{reviewError}</p>}
-            <ul className="divide-y divide-[var(--glass-border)]">
-              {reviewMessages.map((message) => (
-                <li key={message.id} className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_220px]">
-                  <div className="min-w-0">
-                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-100">{message.raw_text}</pre>
-                    <p className="mt-2 text-sm text-amber-200">{message.parse_error || 'Signal needs review'}</p>
-                  </div>
-                  <div className="text-xs text-slate-400 md:text-right">
-                    <span className="block break-words text-slate-200">{message.channel_name}</span>
-                    <time className="mt-1 block" dateTime={message.received_at}>{new Date(message.received_at).toLocaleString()}</time>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
         <SignalsList
           signals={signals}
           isLoading={loading}

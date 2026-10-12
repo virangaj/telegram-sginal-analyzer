@@ -32,7 +32,10 @@ def _looks_like_raw_signal(message: Message) -> bool:
         normalized = re.sub(r"\s*[/_-]\s*", "", text)
         currencies = r"(?:EUR|GBP|AUD|NZD|USD|CAD|CHF|JPY)"
         instrument = re.search(r"\b(?:GOLD|XAUUSD|XAGUSD|" + currencies + r"{2})\b", normalized)
-        return instrument is not None
+        has_entry = re.search(r"\bENTRY(?:\s+(?:POINT|PRICE))?\b", text)
+        has_target = re.search(r"\b(?:TP\s*\d*|TARGET\s*\d*|TAKE\s*PROFIT)\b", text)
+        has_stop = re.search(r"\b(?:SL|STOP\s*LOSS)\b", text)
+        return instrument is not None and has_entry is not None and has_target is not None and has_stop is not None
     return False
 
 

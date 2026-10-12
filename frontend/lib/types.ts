@@ -23,16 +23,6 @@ export interface Signal {
   message_type_id?: number;
 }
 
-export interface ReviewMessage {
-  id: number;
-  channel_id: number;
-  channel_name: string;
-  category: 'crypto' | 'cfds';
-  raw_text: string;
-  parse_error: string | null;
-  received_at: string;
-}
-
 export interface Channel {
   id: number;
   platform: string;

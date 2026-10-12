@@ -29,6 +29,38 @@ def test_labeled_prices_and_numbered_targets(direction, order):
     assert parsed.take_profits == [target]
 
 
+def test_decorated_xauusd_signal_with_price_annotation_parses():
+    text = """**🚨 NEW TRADING SIGNAL / BUY LIMIT 🚨**
+
+📊 **Asset:** XAUUSD
+
+📍 **Entry :** 4163
+
+⛔️ **Stop Loss :** 4143 ( 200 PIP )
+
+✅ TP : 4180
+✅TP  : 4227"""
+    parsed = asyncio.run(GoldSignalParser().parse(text))
+    assert parsed is not None
+    assert parsed.symbol == "XAUUSD"
+    assert parsed.direction == "BUY"
+    assert parsed.order_type == "LIMIT"
+    assert parsed.entries == [4163]
+    assert parsed.stop_loss == 4143
+    assert parsed.take_profits == [4180, 4227]
+
+
+@pytest.mark.parametrize("text", [
+    "Buy zone GOLD (**HIGH RISK!!!**)\nEntry: 4150 - 4143\nSL: 4134\nTP: 4180/4250 1:7 RR",
+    "**XAUUSD Sell 🔥🔥🔥**\n💸Entry point : 4342 - 4346\n🔶 Target 01 - 4302\n🔶 Target 02 - 4282\n🍃SL :4352",
+])
+def test_gold_entry_ranges_are_reviewed_not_treated_as_scaling_entries(text):
+    parser = GoldSignalParser()
+    assert parser.can_parse(text)
+    assert asyncio.run(parser.parse(text)) is None
+    assert "Entry range" in parser.review_reason(text)
+
+
 @pytest.mark.parametrize("text", [
     "GOLD\nBUY\nEntry: 2000\nTP1: 2020",
     "GOLD\nBUY\nEntry: 2000-2010\nTP1: 2020\nSL: 1990",

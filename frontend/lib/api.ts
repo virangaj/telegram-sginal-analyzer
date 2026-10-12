@@ -30,10 +30,6 @@ class ApiClient {
     });
   }
 
-  async getReviewMessages(category: 'crypto' | 'cfds', limit: number = 50) {
-    return this.client.get('/api/messages/review', { params: { category, limit } });
-  }
-
   async getSignal(id: number) {
     return this.client.get(`/api/signals/${id}`);
   }
